@@ -1,0 +1,48 @@
+---
+title: "Title"
+author: Brendan Casey
+abstract: |
+
+keywords: 
+  - Avian
+  - Boreal
+  - Forestry
+  - LiDAR
+date: "`r Sys.Date()`"
+bibliography: library.bib
+link-citations: yes
+linenumbers: true
+modulolinenumbers: 1
+numbersections: true
+colorlinks: yes
+citecolor: blue
+# Use a CSL with `citation_package = "default"`
+biblio-style: apalike
+csl: https://www.zotero.org/styles/elsevier-harvard
+
+
+---
+
+
+```{r setup, include=FALSE}
+
+library(knitr)
+library(tinytex)
+library(kableExtra)
+library(xlsx)
+
+
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, signif = 3,
+                      out.extra = "",
+                      out.width = "100%",
+                      fig.retina = 2,
+                      fig.pos = 'htb')
+
+knitr::read_chunk("code/figures_tables.R")
+
+```
+
+
+
+
+
