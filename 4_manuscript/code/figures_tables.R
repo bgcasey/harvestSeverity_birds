@@ -15,7 +15,7 @@ library(ggstance)
 
 ## ---- covDes
 cov_description<-xlsx::read.xlsx("../0_data/covariate_list.xlsx", "variables")
-kable(cov_description, position = "h!", col.names = c("Metric",
+  kable(cov_description, position = "h!", col.names = c("Metric",
                                      "Source",
                                      "Description"),
   align = c("l","l","r"), escape=F, caption = 'Spatial covariates included in the analysis.',"latex", booktabs=TRUE, linesep="")%>% 
