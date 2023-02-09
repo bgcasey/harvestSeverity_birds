@@ -16,3 +16,527 @@ pre[class] {
   max-height: 500px;
 }
 ```
+
+
+```{r}
+library(dplyr)
+library(lme4)
+#library(piecewiseSEM) # for psudo R2
+library(MuMIn)
+library(performance)
+library(effects)
+library(fitdistrplus)
+library(purrr)
+library(DHARMa)
+library(htmltools)
+library(jtools)
+
+
+load("2_pipeline/store/d.rData")
+```
+
+
+## Richness {-}
+
+```{r}
+d<-d%>%
+  dplyr::select(-c(CAWA, CAWA_off, DATE, TIME))%>%
+  filter(richness<40)%>%
+  na.omit()
+# 
+# %>%
+#   distinct()
+
+
+sc_2 <- attr(d$dNBR_perc, 'scaled:scale')
+ce_2 <- attr(d$dNBR_perc, 'scaled:center')
+
+d1<-d%>%
+  mutate(dNBR_perc_us=dNBR_perc * sc_2 + ce_2)%>%
+  filter(dNBR_perc_us<1)
+
+
+
+
+```
+
+
+
+
+### Distribution of response
+```{r eval=FALSE}
+
+
+plotdist(d$richness, discrete=TRUE, histo = TRUE, demp = TRUE)
+descdist(d$richness, discrete=TRUE, boot = 1000)
+
+
+fit_p  <- fitdist(d$richness, "pois")
+
+fit_nb <- fitdist(d$richness, "nbinom")
+
+fit_norm <- fitdist(d$richness, "norm")
+
+# png("3_output/figures/distribution/richness_fitdist.png", width = 500, height = 1500, units = "px", pointsize = 12)
+par(mfrow=c(3,1))
+plot.legend <- c("Poisson", "Negative binomial", "normal")
+denscomp(list(fit_p, fit_nb, fit_norm), legendtext = plot.legend)
+cdfcomp (list(fit_p, fit_nb, fit_norm), legendtext = plot.legend)
+qqcomp  (list(fit_p, fit_nb, fit_norm), legendtext = plot.legend)
+# dev.off() 
+
+gofstat(fit_norm)
+# 13096.69
+gofstat(fit_p)
+# 13946.38
+
+gofstat(fit_nb)
+# 12760.83
+```
+
+
+### Evaluate different random effects {-}
+
+**Potential random effects:**
+station
+survey year
+distance to edge of polygon
+
+```{r eval=FALSE}
+
+
+Richness_m0<-lme4::glmer(richness ~ 1, data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m1<-lme4::glmer(richness ~ 1 + (1|SS), data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m2<-lme4::glmer(richness ~ 1 + (1|dist_to_edge), data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m3<-lme4::glmer(richness ~ 1 + (1|survey_year), data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m4<-lme4::glmer(richness ~ 1 + (1|SS) + (1|dist_to_edge), data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m5<-lme4::glmer(richness ~ 1 + (1|SS) + (1|survey_year), data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m6<-lme4::glmer(richness ~ 1 + (1|SS/survey_year), data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m7<-lme4::glmer(richness ~ 1 + (1|cas_id), data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m8<-lme4::glmer(richness ~ 1 + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m9<-lme4::glmer(richness ~ 1 + (1|SS) + (1|cas_id), data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m10<-lme4::glmer(richness ~ 1 + (1|survey_year/cas_id), data=d,  family = poisson, na.action = na.exclude)
+
+
+# Compare models
+
+## make a list of models
+rich_nullMods_r<-list(Richness_m1, Richness_m2, Richness_m3, Richness_m4, Richness_m5, Richness_m6, Richness_m7, Richness_m8, Richness_m9, Richness_m10)
+names(rich_nullMods_r)<- c("Richness_m1", "Richness_m2", "Richness_m3", "Richness_m4", "Richness_m5", "Richness_m6", "Richness_m7", "Richness_m8", "Richness_m9", "Richness_m10")
+save(rich_nullMods_r, file="2_pipeline/store/models/rich_nullMods_r.rData")
+
+
+ms <- model.sel(rich_nullMods_r, rank="AIC", extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
+
+sel.table <- ms
+#sel.table$family <- NULL
+#sel.table <- round(sel.table[c(17:21)], 3)
+
+sel.table <- cbind(
+    Model = 
+       attr(sel.table, "row.names"),
+    formula = sapply(get.models(ms, TRUE),
+        function(mo) paste0(deparse(formula(mo)[[3]], width.cutoff = 500), collapse="") ),
+
+    sel.table
+    )
+
+rich_nullMods_r_sum<-sel.table
+
+save(rich_nullMods_r_sum, file="2_pipeline/store/models/rich_nullMods_sum_r.rData")
+
+anova(Richness_m8, Richness_m6)
+
+
+Richness_null_ms <- model.sel(Richness_m6, rank="AIC", extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
+
+save(Richness_null_ms, file="2_pipeline/store/models/richness_null_ms.rData")
+
+Richness_null<-Richness_m6
+```
+
+
+
+### Nonlinear effects {-}
+
+```{r eval=FALSE}
+
+# RdNBR
+nmp1<-lme4::glmer(richness ~RdNBR + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+nmp2<-lme4::glmer(richness ~poly(RdNBR,2) + (1 | SS/survey_year), data=d, family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+nmp3<-lme4::glmer(richness ~poly(RdNBR,3) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+nmp4<-lme4::glmer(richness ~poly(RdNBR,4) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+print(AIC(nmp1, nmp2, nmp3, nmp4))
+
+# Extract scales
+d1 <- d
+d1$RdNBR<-as.numeric(d1$RdNBR)
+
+pred<-effect_plot(nmp4, pred=RdNBR, data = d1,  plot.points=TRUE, interval=TRUE)
+plot(pred)
+
+#nmp2
+
+
+### dNBR_recovery
+
+nmp5<-lme4::glmer(richness ~dNBR_recovery + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+nmp6<-lme4::glmer(richness ~poly(dNBR_recovery,2) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+nmp7<-lme4::glmer(richness ~poly(dNBR_recovery,3) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+nmp8<-lme4::glmer(richness ~poly(dNBR_recovery,4) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+print(AIC(nmp5, nmp6, nmp7, nmp8))
+d1 <- d
+d1$dNBR_recovery<-as.numeric(d1$dNBR_recovery)
+
+pred<-effect_plot(nmp5, pred=dNBR_recovery, data = d1,  plot.points=TRUE, interval=TRUE)
+plot(pred)
+# nmp6
+
+## ss_dst_timelag
+
+nmp9<-lme4::glmer(richness ~ss_dst_timelag_NBR + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+nmp10<-lme4::glmer(richness ~poly(ss_dst_timelag_NBR,2) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+nmp11<-lme4::glmer(richness ~poly(ss_dst_timelag_NBR,3) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+nmp12<-lme4::glmer(richness ~poly(ss_dst_timelag_NBR,4) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+print(AIC(nmp9, nmp10, nmp11, nmp12))
+
+d1 <- d
+d1$ss_dst_timelag_NBR<-as.numeric(d1$ss_dst_timelag_NBR)
+
+pred<-effect_plot(nmp9, pred=ss_dst_timelag_NBR, data = d1,  plot.points=TRUE, interval=TRUE)
+plot(pred)
+
+# nmp10
+
+```
+
+poly(ss_dst_timelag,2) 
+poly(dNBR_recovery,2)
+poly(RdNBR,2)
+
+### interaction effects {-}
+
+```{r}
+in_1<-glm(richness ~ poly(ss_dst_timelag_NBR,2, raw=TRUE) * poly(RdNBR,2, raw=TRUE), data=d,  family = poisson,  na.action=na.fail) 
+d_in_1<-MuMIn::dredge(in_1, extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
+
+
+in_2<-lme4::glmer(richness ~ poly(dNBR_recovery,2) * poly(RdNBR,2)   +  (1 | SS/survey_year), data=d,  family = poisson,  na.action=na.fail) 
+d_in_2<-MuMIn::dredge(in_2, extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
+
+
+```
+
+
+### Global model
+```{r eval=FALSE}
+# gm<-lme4::glmer(richness ~ PercentConif + Forest_Type + Shape_Area + PA_ratio + dist_ext_upper_1 + poly(ss_dst_timelag,2) * poly(RdNBR,2) + species_1 + dist_to_edge + (1 | SS/survey_year),offset=log(n_samples), data=d_orig,  family = poisson, na.action = na.fail, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+
+gm<-lme4::glmer(richness ~ Shape_Area + PA_ratio + poly(ss_dst_timelag_NBR,2, raw=TRUE) * poly(RdNBR,2, raw=TRUE)  + dist_to_edge + y + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.fail, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+summary(gm)
+
+
+
+richness_dredge<-MuMIn::dredge(gm, extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
+
+save(richness_dredge, file="2_pipeline/store/models/richness_dredge.rData")
+
+#get a subset of top models
+richness_dredge_sub<-subset(richness_dredge, delta<5) 
+save(richness_dredge_sub, file="2_pipeline/store/models/richness_can_dredge_sub.rDATA")
+
+#calculate variable importance weights
+# m_can_dredge_imp<-importance(m_can_dredge)
+richness_dredge_imp<-sw(richness_dredge)
+save(richness_dredge_imp, file="2_pipeline/store/models/richness_dredge_imp.rDATA")
+
+```
+
+### Diagnostic plots
+
+```{r eval=FALSE}
+
+ 
+m1<-lme4::glmer(richness ~  poly(dNBR_perc,2, raw=TRUE)* poly(ss_dst_timelag, 2 ,raw=TRUE)  + dist_to_edge + (1 | SS/survey_year), data=d2,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+
+m2<-lme4::glmer(richness ~ poly(ss_dst_timelag_NBR,2, raw=TRUE) * poly(RdNBR,2, raw=TRUE) + dist_to_edge + (1 | SS/survey_year), offset=log(n_samples), data=d,family = poisson, na.action = na.fail) 
+
+m2a<-lme4::glmer(richness ~ poly(ss_dst_timelag_NBR,2, raw=TRUE) * poly(dNBR_perc,2, raw=TRUE) + (1 | SS/survey_year), data=d,family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+
+m3<-lme4::glmer(richness ~ ss_dst_timelag * poly(RdNBR,2) + (1 | SS/survey_year), offset=log(n_samples), data=d,family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+
+m4<-lme4::glmer(richness ~ poly(ss_dst_timelag,2) * RdNBR + (1 | SS/survey_year), offset=log(n_samples), data=d,family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+
+
+anova(m3, m4)
+
+
+
+summary(m3)
+
+performance::check_model(m1)
+
+dharma_resid_m1 <- simulateResiduals(fittedModel = m1, n = 500)
+plot(dharma_resid_m1)
+
+plot(allEffects(m2))
+
+ggpredict(m2, c("RdNBR", "ss_dst_timelag")) %>% plot()
+
+
+m2<-lme4::glmer(richness ~ poly(ss_dst_timelag,2) * poly(RdNBR,2) + dist_to_edge + (1 | SS/survey_year), data=d, family = poisson, na.action = na.fail, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+
+d2<-d%>%
+  dplyr::select(-c(CAWA, CAWA_off))%>%
+  distinct()
+
+summary(m2)
+performance::check_model(m2)
+
+dharma_resid_m2 <- simulateResiduals(fittedModel = m2, n = 500)
+plot(dharma_resid_m2)
+
+
+
+
+
+```
+
+Do time since harvest and dNBR predict NBR recovery
+```{r eval=FALSE}
+
+d1<-d%>%
+  dplyr::select(cas_id, ss_dst_timelag_NBR, RdNBR, dNBR_recovery)%>%
+  distinct()
+  
+dm1<-lm(dNBR_recovery ~ poly(ss_dst_timelag_NBR,2) * poly(RdNBR,2), data=d1) 
+summary(dm1)
+
+# Call:
+# lm(formula = dNBR_recovery ~ poly(ss_dst_timelag, 2) * poly(RdNBR, 
+#     2), data = d1)
+# 
+# Residuals:
+#     Min      1Q  Median      3Q     Max 
+# -4.6226 -0.3654  0.0168  0.4014  4.9515 
+# 
+# Coefficients:
+#                                           Estimate Std. Error t value
+# (Intercept)                                0.45106    0.06078   7.421
+# poly(ss_dst_timelag, 2)1                  11.71959    1.12807  10.389
+# poly(ss_dst_timelag, 2)2                  -0.89866    1.27802  -0.703
+# poly(RdNBR, 2)1                           -1.07617    1.00060  -1.076
+# poly(RdNBR, 2)2                            0.51683    1.53871   0.336
+# poly(ss_dst_timelag, 2)1:poly(RdNBR, 2)1 -36.36718   15.85493  -2.294
+# poly(ss_dst_timelag, 2)2:poly(RdNBR, 2)1  87.59565   20.88196   4.195
+# poly(ss_dst_timelag, 2)1:poly(RdNBR, 2)2 -67.10427   24.50612  -2.738
+# poly(ss_dst_timelag, 2)2:poly(RdNBR, 2)2  30.77123   20.96491   1.468
+#                                          Pr(>|t|)    
+# (Intercept)                              1.78e-12 ***
+# poly(ss_dst_timelag, 2)1                  < 2e-16 ***
+# poly(ss_dst_timelag, 2)2                  0.48260    
+# poly(RdNBR, 2)1                           0.28317    
+# poly(RdNBR, 2)2                           0.73724    
+# poly(ss_dst_timelag, 2)1:poly(RdNBR, 2)1  0.02263 *  
+# poly(ss_dst_timelag, 2)2:poly(RdNBR, 2)1 3.79e-05 ***
+# poly(ss_dst_timelag, 2)1:poly(RdNBR, 2)2  0.00662 ** 
+# poly(ss_dst_timelag, 2)2:poly(RdNBR, 2)2  0.14342    
+# ---
+# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Residual standard error: 0.8007 on 252 degrees of freedom
+# Multiple R-squared:  0.4706,	Adjusted R-squared:  0.4538 
+# F-statistic:    28 on 8 and 252 DF,  p-value: < 2.2e-16
+
+
+
+```
+
+### Plot interactions
+```{r}
+
+
+m1<-lme4::glmer(richness ~  poly(dNBR_perc,2, raw=TRUE)* poly(ss_dst_timelag_NBR, 3 ,raw=TRUE)  + dist_to_edge + (1 | SS/survey_year), data=d1,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+
+
+m2<-lme4::glmer(richness ~ poly(dNBR_perc,2, raw=TRUE)+ poly(ss_dst_timelag_NBR, 3 ,raw=TRUE)  + dist_to_edge + (1 | SS/survey_year), data=d1,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+
+d1$dist_ext_upper_1<-as.numeric(as.character(d1$dist_ext_upper_1))
+
+d1$dist_ext_upper_1_sc<-scale(d1$dist_ext_upper_1)
+d1<-d1%>%
+  dplyr::filter(dist_ext_upper_1>50)
+
+m3<-lme4::glmer(richness ~  poly(dist_ext_upper_1_sc,2, raw=TRUE) + poly(ss_dst_timelag_NBR, 3 ,raw=TRUE)  + dist_to_edge + (1 | SS/survey_year), data=d1,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+
+#Unscale predictors
+# Extract scales
+sc_1 <- attr(d1$ss_dst_timelag_NBR, 'scaled:scale')
+ce_1 <- attr(d1$ss_dst_timelag_NBR, 'scaled:center')
+
+sc_2 <- attr(d1$dNBR_perc, 'scaled:scale')
+ce_2 <- attr(d1$dNBR_perc, 'scaled:center')
+
+sc_3 <- attr(d1$dist_ext_upper_1_sc, 'scaled:scale')
+ce_3 <- attr(d1$dist_ext_upper_1_sc, 'scaled:center')
+#######
+dd<-ggpredict(m1, terms = c("ss_dst_timelag_NBR [all]","dNBR_perc [all]"))%>%
+         as_tibble()%>% 
+  mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
+    # mutate(dNBR_perc_us_us = as.numeric(group))%>%
+  mutate(timelag = x* sc_1 + ce_1) %>%
+  mutate(g = ifelse((aa < 1 & aa > .95), 100,
+               ifelse((aa < .95 & aa > .85), 95, 
+                   ifelse((aa < .85 & aa > .75), 85,
+                      ifelse((aa < .75 & aa > .65), 75,
+                      ifelse((aa < .65 & aa > .55), 65,       
+                             ifelse((aa < .55 & aa > .45), 55,
+                             ifelse((aa < .45 & aa > .35), 45,
+                             ifelse((aa < .35 & aa > .25), 35,25    
+                          )))))))))
+
+real<-gg1
+gg1 <- (ggplot(dd)
+  + aes(timelag, predicted, ymin = conf.low, ymax = conf.high,
+        colour  = factor(g))
+  +  xlim(0, 25)
+ + scale_color_manual(values = c('#c6dbef','#9ecae1','#6baed6','#4292c6','#2171b5','#08519c','#08306b'))
+  # + geom_line()
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+  + stat_smooth(method = "lm",
+                formula = y ~ poly(x, 3),
+              se = TRUE)
+  +labs(y="Songbird richness", x="Time since harvest (yr)", color="NBR disturbance (%)") 
+  + guides(color=guide_legend(override.aes=list(fill=NA))) ## to make legend background white while using geomsmooth confidenence limits
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+  + theme(panel.background = element_blank(),
+          legend.key = element_rect(colour = "transparent"),
+          # text = element_text(size=10, family="LMRoman10-Regular"),
+          axis.ticks=element_blank(),
+          #strip.background =element_rect(fill="white"),
+         panel.border = element_rect(color = "black", fill = NA, size = .2),
+          axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
+         axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+          #panel.background = element_rect(fill="white"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          legend.position="bottom",
+          strip.background =element_rect(fill="white"))
+          # strip.text = element_text(family="LMRoman10-Italic"))
+            # legend.key = element_rect(fill = "white"))
+)
+ggsave(gg1, filename=paste0("3_output/figures/time_nbrDist.png"), width =7, height=4)
+ggsave(gg1, filename=paste0("3_output/figures/time_nbrDist_b.png"), width =5, height=5)
+
+gg1
+
+#######
+#######
+#######
+#######
+dd<-ggpredict(m2, terms = c("ss_dst_timelag_NBR [all]","dNBR_perc [all]"))%>%
+         as_tibble()%>% 
+  mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
+    # mutate(dNBR_perc_us_us = as.numeric(group))%>%
+  mutate(timelag = x* sc_1 + ce_1) %>%
+  mutate(g = ifelse((aa < 1 & aa > .95), 100,
+               ifelse((aa < .95 & aa > .85), 95, 
+                   ifelse((aa < .85 & aa > .75), 85,
+                      ifelse((aa < .75 & aa > .65), 75,
+                      ifelse((aa < .65 & aa > .55), 65,       
+                             ifelse((aa < .55 & aa > .45), 55,
+                             ifelse((aa < .45 & aa > .35), 45,
+                             ifelse((aa < .35 & aa > .25), 35,25    
+                          )))))))))
+
+
+gg2 <- (ggplot(dd)
+  + aes(timelag, predicted, ymin = conf.low, ymax = 30,
+        colour  = factor(g), fill = factor(g))
+  # + geom_line()
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+  + stat_smooth(method = "lm",
+                formula = y ~ poly(x, 3),
+              se = TRUE)
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+)
+
+gg2
+
+
+
+#######
+#######
+#######
+#######
+
+
+dd<-ggpredict(m3, terms = c("ss_dst_timelag_NBR [all]","dist_ext_upper_1_sc [all]"))%>%
+         as_tibble()%>% 
+  mutate(aa = as.numeric(as.character(group))* sc_3 + ce_3)%>%
+    # mutate(dNBR_perc_us_us = as.numeric(group))%>%
+  mutate(timelag = x* sc_1 + ce_1)
+
+
+gg3 <- (ggplot(dd)
+  + aes(timelag, predicted,  ymax = 30,
+        colour  = factor(aa))
+  # + geom_line()
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+  + stat_smooth(method = "lm",
+                formula = y ~ poly(x, 3),
+              se = TRUE)
+    +  xlim(5, 25)
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+  + guides(color=guide_legend(override.aes=list(fill=NA))) ## to make legend background white while using geomsmooth confidenence limits
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+  + theme(panel.background = element_blank(),
+          legend.key = element_rect(colour = "transparent"),
+          text = element_text(size=10, family="LMRoman10-Regular"),
+          axis.ticks=element_blank(),
+          #strip.background =element_rect(fill="white"),
+         panel.border = element_rect(color = "black", fill = NA, size = .2),
+          axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
+         axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+          #panel.background = element_rect(fill="white"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          # legend.position="none",
+          strip.background =element_rect(fill="white"))
+          # strip.text = element_text(family="LMRoman10-Italic"))
+            # legend.key = element_rect(fill = "white"))
+  
+  
+  )
+
+gg3
+
+
+```
+
+

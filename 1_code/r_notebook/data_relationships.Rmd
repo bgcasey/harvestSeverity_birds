@@ -1,0 +1,27 @@
+
+## Data relationships
+
+
+```{r}
+load("0_data/manual/spatial/bd_cov.rData")
+
+c1<-cor(d$dNBR_perc, d$RdNBR)
+c2<-cor(d$dNBR_perc, d$dNBR)
+c3<-lm(dNBR_perc ~dist_ext_upper_1, data=bd_cov)
+
+ggplot(bd_cov_f, aes(x = dist_ext_upper_1, y = dNBR_perc)) + 
+  geom_point() +
+  stat_smooth(method = "lm", col = "red")
+
+
+bd_cov_f<-bd_cov%>%
+filter( dist_1=="CO" & is.na(dist_2) & ss_dst_timelag>0)%>%
+  filter(dist_ext_upper_1==95)
+
+hist(bd_cov_f$dNBR_perc)
+
+
+
+bd_cov$year_dif<-bd_cov$yod-bd_cov$dist_yr_1
+
+```

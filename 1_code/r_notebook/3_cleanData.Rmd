@@ -16,3 +16,101 @@ pre[class] {
   max-height: 500px;
 }
 ```
+
+
+Join bird data and spatial data
+
+```{r eval=FALSE}
+load("0_data/manual/spatial/spatial_cov.rData")
+load("0_data/manual/bird/bird_response_variables.rData")
+
+bird_response_variables$survey_year<-as.numeric(bird_response_variables$survey_year)
+# spatial_cov$survey_year<-as.character(spatial_cov$survey_year)
+
+bd_cov<-left_join(bird_response_variables, spatial_cov, by = c("SS", "survey_year"))
+
+# add timelag columns
+bd_cov$ss_dst_timelag<-bd_cov$survey_year-bd_cov$dist_yr_1
+bd_cov$ss_dst_timelag_NBR<-bd_cov$survey_year-round(bd_cov$yod, 0)
+
+
+# add sampling intensity column
+bd_cov<-bd_cov%>%
+  group_by(SS, survey_year)%>%
+  mutate(n_samples=n())
+
+save(bd_cov, file="0_data/manual/spatial/bd_cov.rData")
+
+```
+
+Filter data
+```{r eval=FALSE}
+bd_cov_f<-bd_cov%>%
+  # filter( dist_1=="CO" & is.na(dist_2))
+filter( dist_1=="CO" & is.na(dist_2) & ss_dst_timelag_NBR>0)
+# filter(is.na(dist_2))  
+```
+
+Scale data
+
+```{r}
+p1<-bd_cov_f%>%
+  dplyr::select(SS, cas_id, survey_year, n_samples, x, y, DATE, TIME, CAWA, CAWA_off, richness, menhIndx, margIndx, shan, brill, simp, pilou, hill, FRic, qual.FRic, FEve, FDiv, FDis, RaoQ, PercentConif, PercentDecid, Forest_Type, Shape_Area, PA_ratio, species_1, species_per_1, ss_dst_timelag, ss_dst_timelag_NBR,dist_to_edge, dNBR, RdNBR, dNBR_recovery, NBR_survey, dNBR_perc, dist_ext_upper_1)%>%
+  distinct()
+
+# %>%
+#   na.omit()
+
+# d3$dist_cont<-as.character(d3$dist_ext_upper_1)
+# d3$dist_cont<-d3$dist_cont
+# 
+# d3$treatment<-paste(d3$dist_ext_upper_1, d3$ss_dst_timelag_range, sep="__")
+# d3$treatment<-as.factor(d3$treatment)
+
+
+# reclassify columns as necessary
+## check classes
+lapply(p1,class)
+
+# turn survey year into a categorical variable
+
+p1$dist_to_edge<-as.numeric(p1$dist_to_edge)
+
+#Convert character variables to factors
+p2<- cbind(p1[1:2],as.data.frame(unclass(p1[c(3:ncol(p1))]),                 
+                       stringsAsFactors = TRUE))
+
+# check classes
+lapply(p2,class)
+
+p2$y<-scale(p2$y, center = TRUE, scale = TRUE)
+
+
+# scale CAS-FRI predictors
+p2$dist_to_edge<-scale(p2$dist_to_edge, center = TRUE, scale = TRUE)
+p2$Shape_Area<-scale(p2$Shape_Area , center = TRUE, scale = TRUE)
+p2$PercentConif<-scale(p2$PercentConif, center = TRUE, scale = TRUE)
+p2$PA_ratio<-scale(p2$PA_ratio, center = TRUE, scale = TRUE)
+p2$PercentDecid<-scale(p2$PercentDecid, center = TRUE, scale = TRUE)
+p2$ss_dst_timelag<-scale(p2$ss_dst_timelag, center = TRUE, scale = TRUE)
+p2$species_per_1<-scale(p2$species_per_1, center = TRUE, scale = TRUE)
+
+#scale NBR
+p2$dNBR<-scale(p2$dNBR, center=TRUE, scale=TRUE)
+p2$RdNBR<-scale(p2$RdNBR, center=TRUE, scale=TRUE)
+p2$dNBR_recovery<-scale(p2$dNBR_recovery, center=TRUE, scale=TRUE)
+p2$NBR_survey<-scale(p2$NBR_survey, center=TRUE, scale=TRUE)
+p2$dNBR_perc<-scale(p2$dNBR_perc, center=TRUE, scale=TRUE)
+p2$ss_dst_timelag_NBR<-scale(p2$ss_dst_timelag_NBR, center = TRUE, scale = TRUE)
+
+d<-p2
+
+save(d, file="2_pipeline/store/d.rData")
+
+load("2_pipeline/store/d.rData")
+
+```
+
+
+
+
