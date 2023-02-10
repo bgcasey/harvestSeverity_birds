@@ -1,87 +1,503 @@
+## Response variables
+ 
 ```{r setup, include=FALSE, cache=FALSE}
 #Set root directory to R project root
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
-
-```{css, echo=FALSE}
-# set max height of code chunks using the following css styling
-
-pre {
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-pre[class] {
-  max-height: 500px;
-}
+```{r eval=FALSE}
+library(tidyverse)
 ```
 
-This bird data was gathered and processed as part of chapter 3 of this Thesis. 
+
+### BAM data
+
+```{r readBAM, eval=FALSE}
+BAM<-read.csv("0_data/external/BAM_ss_spp.csv", header = TRUE)
+b<-BAM%>%
+  filter(DATE!="")
+
+# Prep data
+# rename columns
+names(b)[7]<- "x"
+names(b)[8]<- "y"
+
+#add source column
+b$source<-"BAM"
+#remove unneeded fields
+b<-b[ -c(2)]
+
+#Change myrtle warbler to yellow-rumped warbler
+b$SPECIES[b$SPECIES == "MYWA"] <- "YRWA"
 
 
-## Import bird data
-```{r eval=FALSE}
-## Detections
+# Consolodate abundance estimates from duplicate stations
+# ~ are the grouping variables while the . represents all other variables to sum  
+b<-aggregate(. ~SS+DATE+TIME+MAXDUR+MAXDIS+x+y+surveyType+SPECIES+source, b, sum)
 
-load("0_data/manual/bird/bd_wide.rData")
-
-## Community metrics
-### Diversity
-load("0_data/manual/bird/bd_div_1.rData")
-
-### Functional diversity
-load("0_data/manual/bird/bd_funcDiv_2.rData")
-
-## QPAD offsets
-load("0_data/manual/bird/ss_detect.rData")
+b$DATE<-as.Date(b$DATE)
+# # change data class where needed. Need to match the classes of the columns in the other bird dataframes to merge.
+# b$MAXDIS<-as.character(b$MAXDIS)
 ```
 
-## Get and count CAWA data
+
+### WildTrax data
+
+*See the wildRtrax article here for more details on authentication:* <https://abbiodiversity.github.io/wildRtrax/articles/authenticating-into-wt.html>
+
+1.  **Load packages**
 
 ```{r eval=FALSE}
+
+#install.packages("remotes")
+remotes::install_github("ABbiodiversity/wildRtrax")
+
+library(wildRtrax)
+library(tidyverse)
+library(lubridate)
+library(hms)
+```
+
+2.  **Login to WildTrax**
+
+NOTE: Edit the 'loginexample.R' script to include your WildTrax login details and rename to 'login.R'. DO NOT PUSH YOUR LOGIN TO GITHUB
+
+```{r eval=FALSE}
+config <- "1_code/r_scripts/login.R"
+source(config)
+
+wt_auth()
+```
+
+3.  **Get list of projects from WildTrax**
+
+```{r eval=FALSE}
+projects <- wt_get_download_summary(sensor_id = 'ARU')
+```
+
+4.  **Download multiple projects**
+
+```{r eval=FALSE}
+
+# list target projects
+target<-c("381", "31", "161", "41", "73", "334", "600", "620", "592", "85", "10", "5", "1360", "1115", "80", "81", "82", "83", "361", "1360", "1115", "1884")
+projects.test <- projects%>%
+ filter(project_id %in% target)
+
+dat.list <- list()
+error.log <- data.frame()
+for(i in 1:nrow(projects.test)){
+  
+  dat.list[[i]] <- try(wt_download_report(project_id = projects.test$project_id[i], sensor_id = projects.test$sensorId[i], weather_cols = F, report = "summary"))
+  
+  print(paste0("Finished dataset ", projects.test$project[i], " : ", i, " of ", nrow(projects.test), " projects"))
+}
+
+dat <- do.call(rbind, dat.list)
+```
+
+5.  **Save with metadata & timestamp**
+
+```{r eval=FALSE}
+save(dat, projects.test, error.log, file=paste0("0_data/manual/bird/wildtrax_raw_", Sys.Date(), ".rData"))
+```
+
+```{r}
+w<-dat%>%
+  filter(status=="Transcribed")%>%
+  dplyr::rename(c(SS=location, x=longitude, y=latitude, SPECIES=species_code, ABUND=abundance))%>%
+  mutate(source="WT")%>%
+  mutate(surveyType="ARU")%>%
+  mutate(MAXDIS="Inf")%>%
+  mutate(MAXDIS=as.numeric(MAXDIS))%>%
+  mutate(recording_date=lubridate::as_datetime(recording_date))%>%
+  mutate(DATE=lubridate::date(recording_date))%>%
+  mutate(TIME=format(as.POSIXct(recording_date), format = "%H:%M"))
+
+#Change myrtle warbler to yellow-rumped warbler
+w$SPECIES[w$SPECIES == "MYWA"] <- "YRWA"
+
+
+w$MAXDUR <- as.numeric(gsub("s.*$", "", w$method))
+
+w<-w%>%dplyr::select(c("SS","DATE","TIME","MAXDUR","MAXDIS","x","y", "surveyType", "SPECIES", "ABUND", "source", "individual_appearance_order"))%>%
+  filter(ABUND!="N/A"&!grepl('CI', ABUND)&ABUND!="")
+```
+
+##### seperate numerical and "too many to count" abundance values {-}
+
+```{r eval=FALSE}
+w2<-w
+#add new columns for abundance data (convert words to numbers)
+w2$ABUND_TMTT[w2$ABUND=="TMTT"]<-"TMTT"
+
+#Seperate dataframe by species with a numeric ABUND vs too many to count
+w_TMTT<-filter(w2, w$ABUND=="TMTT")
+#w_TMTT<- w_TMTT[-c(7:9)]
+w_TMTT<- distinct(w_TMTT)
+
+#filter to only those where there are numeric ABUND estimates
+w_ABUND<-filter(w2, w2$ABUND!="TMTT")
+
+#remove duplicates to have one entry for individual detected
+w_ABUND<-distinct(w_ABUND)%>%
+  mutate(ABUND=as.numeric(ABUND))
+
+```
+
+##### Sum numerical count data by species/station {-}
+
+``` {r eval=FALSE}
+
+# Consolodate abundance estimates from duplicate stations.Get the total abundance/species/station using the aggregate function
+# ~ are the grouping variables while the . represents all other variables to sum  
+w_ABUND<-stats::aggregate(formula=ABUND ~SS+DATE+TIME+MAXDUR+MAXDIS+x+y+surveyType+SPECIES+source, data=w_ABUND, FUN=sum)
+```
+
+
+##### Estimate TMTT numerical values {-}
+
+Some of the Wildtrax abundance data is labeled TMTT (too many to count). For each species, I'll convert this to a number by taking the average number of individuals in a group of 3 or more and using that average in place of TMTT.
+
+###### Combine BAM and Wildtrax data {-}
+
+```{r eval=FALSE}
+bd<-dplyr::bind_rows(b, w_ABUND)
+```
+
+
+###### Convert bird data to wide format {-}
+
+```{r eval=FALSE}
+bd_wide<-tidyr::spread(bd, SPECIES, ABUND, fill=0)
+#save(bd_wide, file ="2_pipeline/tmp/bd_wide.rData")
+```
+
+###### Calculate mean number of detected individuals of groups of 3 or more per species, and apply to TMTT values. {-}
+
+```{r eval=FALSE}
+bx<-bd_wide[-c(1:9)]
+
+#Get mean abundance for each species and apply to corresponding TMTT
+library(expss)
+bmean<-round(mean_col_if(gt(3), bx), digits = 0)
+bm<-as.data.frame(bmean)
+bm <- cbind(rownames(bm), data.frame(bm, row.names=NULL))
+colnames(bm)<- c("SPECIES","ABUND_TMTT_2")
+
+#IF a species hasn't been detected in groups of 4 or more, convert TMTT to 4
+bm[is.na(bm)]<-4
+
+
+#join TMTT abundance values with the subsetted TMTT Wiltrax data
+w_TMTT<-left_join(w_TMTT, bm)
+
+#add TMTT abundance estimates to the abundance column
+w_TMTT<-w_TMTT%>%
+  mutate(ABUND=(ABUND_TMTT_2))%>%
+  dplyr::select(-c(ABUND_TMTT))
+```
+
+###### Bind back together the TMTT and numerical abundance subsets of the Wildtrax data {-}
+
+``` {r eval=FALSE}
+#bind back together the dataframe
+w_f<-w%>%
+  filter(ABUND!="TMTT")%>%
+  mutate(ABUND=as.numeric(ABUND))%>%
+  bind_rows(w_TMTT)%>%
+  dplyr::select(-c(ABUND_TMTT_2))%>%
+  distinct()
+
+#reaggregate data to get new abundance sums that include the TMTT values
+w_f<-aggregate(formula=ABUND ~SS+DATE+TIME+MAXDUR+MAXDIS+x+y+surveyType+SPECIES+source, data=w_f, FUN=sum)
+
+# w_f$x<-as.numeric(w_f$x)
+# w_f$y<-as.numeric(w_f$y)
+```
+
+
+### Combine BAM and Wildtrax data {-}
+
+```{r combine_data, eval=FALSE}
+bd_a<-bind_rows(b, w_f)
+
+#reorder columns
+bd_a<-bd_a[c("SS","x", "y", "DATE", "TIME", "MAXDUR", "MAXDIS", "surveyType", "source", "SPECIES", "ABUND")]
+
+save(bd_a, file = paste0("0_data/manual/bird/bd_a_", Sys.Date(), ".rData"))
+```
+
+
+### Filter birds {-}
+
+Subset data frame so it does not include non-bird defections (e.g. wind, traffic, etc.) and unknown species. 
+
+```{r eval=FALSE, echo=FALSE}
+
+install.packages("remotes")
+remotes::install_github("RS-eco/traitdata")
+library(traitdata)
+
+bird_alpha<-read.csv("0_data/external/IBP-Alpha-Codes20.csv")
+
+#bl<-bird_lh[c(1, 5:6, 13)]
+
+#Get list of the bird species included in this analyis (extracted from my wide format bird data)
+spp<-as.data.frame(unique(bd_a$SPECIES))%>%
+ dplyr::rename("SPEC"="unique(bd_a$SPECIES)")
+
+# repalce misused species codes
+spp$SPEC[spp$SPEC == 'STSP'] <- 'NESP'
+spp$SPEC[spp$SPEC == 'GRAJ'] <- 'CAJA'
+
+
+# join analysis species list with the species name data
+bn<-inner_join(spp, bird_alpha, by="SPEC")%>%
+ separate(SCINAME, into = c("Genus", "Species"), sep = " (?=[^ ]+$)")
+
+# removed unidentified speces
+bn_1<-bn%>%
+ filter(!grepl('Unidentified', COMMONNAME))
+
+
+# Get total detections by species
+#Set minimum detections threshold
+bd_wide<-spread(bd_a, SPECIES, ABUND, fill=0)
 b<-bd_wide[-c(1:9)]
 totDet<-colSums(b !=0)
 totDet<-totDet[order(-totDet)]
 totDet<-as.data.frame(totDet)
+# add common species name
+bird_alpha<-read.csv("0_data/external/IBP-Alpha-Codes20.csv")
+ba<-bird_alpha[c(2,4)]
+totDet<-left_join(rownames_to_column(totDet, "SPEC"), ba, by=c("SPEC"="SPEC"))
+totDet<-totDet[c(1,3,2)]
+names(totDet)[1]<-"spp"
 
-bd_CAWA<-bd_wide%>%
-  select(c(SS:source, CAWA))%>%
-  mutate(survey_year=as.character(year(as.Date(DATE))))
+#save(totDet, file ="2_pipeline/store/totDet_qpad.rData")
+save(totDet, file ="2_pipeline/store/totDet.rData")
+
+# set minimum number of detections
+nmin<-5
+totDet_f<-totDet%>%
+  filter(totDet>5)
+
+# Filter bird data based on detections
+bn_2<-semi_join(bn_1, totDet_f, by=c("SPEC"="spp"))
 
 
-b<-bd_CAWA%>%
-  select(CAWA)
-# total number of surveys with CAWA detec`tions
-totDet<-colSums(b !=0)
+# Remove flyover species
+# Get other toxonomic info
+#t<-trait_glossary
+el<-elton_birds  
+library(fuzzyjoin)
+# el2<-el[c(1, 8:10)]
+library(fuzzyjoin)
+bn_3<-stringdist_semi_join(bn_2, el, by= c("Genus", "Species"), max_dist=1, ignore_case=TRUE)
+bn_4<-stringdist_semi_join(bn_2, el, by= c("COMMONNAME" = "English"), max_dist=1, ignore_case=TRUE)
 
-# % of statrionswith CAWA detections
-CAWA_SS_sum<-bd_CAWA %>%
-  group_by(SS) %>%
-  summarise(Freq = sum(CAWA))
+bn_5<-rbind(bn_3, bn_4)%>%
+  distinct()
 
-# add occupancy column
-CAWA_SS_sum$occ[CAWA_SS_sum$Freq > 0] <- 1
-CAWA_SS_sum$occ[CAWA_SS_sum$Freq == 0] <- 0
+#check the bird codes that didn't match
+bn_6<-anti_join(bn_2, bn_5)
 
-sum(CAWA_SS_sum$occ)/nrow(CAWA_SS_sum)
+# filter flyover species
+bn_7<-bn_5%>%
+  left_join(el)%>%
+  filter(Family!="Anatidae"&Family!="Pelecanidae"&Family!="Gaviidae"&Family!="Podicipedidae")
+
+bd_traits_full<-bn_7
+save(bd_traits_full, file=paste0("0_data/manual/bird/bd_traits_full_", Sys.Date(), ".rData"))
+
+
+totDet_f_2<-totDet_f%>%
+  inner_join(bn_7)%>%
+  dplyr::select(-c(SPEC, CONF))%>%
+  dplyr::select(c(spp:BLFamilyEnglish))
+
+save(totDet_f_2, file ="2_pipeline/store/totDet_f_2.rData")
+
+
+
+save(bd_a, file = paste0("0_data/manual/bird/bd_a_", Sys.Date(), ".rData"))
+
+bd_f<-semi_join(bd_a, totDet_f_2, by=c("SPECIES"="spp"), copy=TRUE)
+
+save(bd_f, file = paste0("0_data/manual/bird/bd_f_", Sys.Date(), ".rData"))
 ```
 
-## Combine response variables into a single dataframe {-}
+### Format 
+```{r}
+bd_wide<-spread(bd_f, SPECIES, ABUND, fill=0)%>%
+  mutate(survey_year=year(DATE))%>%
+  group_by(SS, survey_year)%>%
+  mutate(n_count=n())%>%
+  dplyr::select(c(SS:TIME, survey_year, n_count, MAXDUR:YHBL))
+
+save(bd_wide, file=paste0("0_data/manual/bird/bd_wide", Sys.Date(), ".rData"))
+```
+
+### Calculate metrics {-}
+
+#### Calculate abundance {-}
+
+Detentions summed over all repeated visits for each year
 
 ```{r eval=FALSE}
+x<-bd_wide
 
-bd_div_all<-inner_join(bd_div, bd_funcDiv)
+# x$DATE<-as.Date(x$DATE)
+x$survey_year<-format(as.Date(x$DATE, format="%d/%m/%Y"),"%Y")
+x<-x[-c(2:3, 5:11)]
+x<-aggregate(. ~SS+survey_year, x, sum)
 
-ss_detect_2<-ss_detect%>%
-  select(SS, DATE, TIME, CAWA_off)
+z<-x[3:ncol(x)]
 
-bird_response_variables<-left_join(bd_CAWA, ss_detect_2)%>%
-      left_join(., bd_div_all, by=c("SS", "survey_year"))
+# remove species with no detections
+z<-z[,colSums(z[,c(3:ncol(z))]) > 0]
 
+z = z[,colSums(z) > 0]
 
-save(bird_response_variables, file="0_data/manual/bird/bird_response_variables.rData")
+z<-cbind(x[1:2], z)
+
+x<-z
 ```
 
 
+#### Diversity metrics {-}
+
+``` {r eval=FALSE}
+library(vegan)
+# richness
+richness<-apply(x[-c(1:2)]>0,1,sum)
+
+# Menhinick's index 
+#"number of species (n) divided by the square-root of the total number of individuals (N)"
+n<-apply(x[-c(1:2)]>0,1,sum)
+N <- apply(x[-c(1:2)],1,sum)
+menhIndx<-n/sqrt(N)
+
+
+# Margalef's index 
+#The number of species (n) minus 1 divided by the natural logarithm of the total number of individuals (N). 
+n<-apply(x[,-c(1:2)]>0,1,sum)
+N <- apply(x[,-c(1:2)],1,sum)
+margIndx<-(n-1)/log(N)
+
+# Alpha diversity 
+# Shannon-Weiner Index 
+shan<-diversity(x[-c(1:2)], index="shannon")
+
+# Brillouin Index 
+brillouin <- function(x) {
+   N <- sum(x)
+   (log(factorial(N)) - sum(log(factorial(x))))/N
+}
+brill<-apply(x[-c(1:2)],1,brillouin)
+
+# Simpson's Index 
+simp<-diversity(x[-c(1:2)], index="simpson")
+
+# Evenness 
+# Pilou evenness 
+S <- apply(x[-c(1:2)]>0,1,sum)
+pilou<-diversity(x[-c(1:2)], index="simpson")/log(S)
+
+# Hills ratio 
+S <- apply(x[-c(1:2)]>0,1,sum)
+hill<-exp(diversity(x[-c(1:2)], index="simpson"))/S
+
+# Combine
+bd_div<-data.frame(x[1:2], richness, menhIndx, margIndx, shan, brill, simp, pilou, hill)
+save(bd_div, file=paste0("0_data/manual/bird/bd_div", Sys.Date(), ".rData"))
+
+```
+
+-----
+
+
+#### Functional diversity {-}
+
+Functional traits were extracted from [@EltonTraits2021]
+
+```{r eval=FALSE}
+load("0_data/manual/bird/bd_traits_full_2023-02-10.rData")
+
+# Keep only traits of interest
+
+bd_tr<-bd_traits_full%>%
+  dplyr::select(c("SPEC", "Diet.Inv", "Diet.Vend",
+"Diet.Vect", "Diet.Vfish", "Diet.Vunk",
+"Diet.Scav", "Diet.Fruit", "Diet.Nect",
+"Diet.Seed", "Diet.PlantO", "Diet.5Cat",
+"ForStrat.watbelowsurf", "ForStrat.wataroundsurf", "ForStrat.ground",
+"ForStrat.understory", "ForStrat.midhigh", "ForStrat.canopy",
+"ForStrat.aerial", "PelagicSpecialist", "Nocturnal",
+"BodyMass.Value"))%>%
+  arrange(SPEC)
+
+```
+
+**Calculate functional diversity**
+
+Calculate functional diversity metrics using the methods of: 
+
+Laliberté, E.; Legendre, P.; Shipley, B. FD: Measuring Functional Diversity from Multiple Traits, and Other Tools for Functional Ecology. R Package Version 1.0-12. 2014. Available online: <https://cran.r-project.org/web/packages/FD>.
+
+```{r eval=FALSE}
+library(FD)
+
+# set species codes as rownames in trait dataframe
+traits<- bd_tr[,-1]
+rownames(traits) <- bd_tr[,1]
+
+#detection data (detection column names match trait row names)
+abund<-x
+abund1<-x[-c(1:2)]
+
+#covert dataframe to matrix
+abund2<-data.matrix(abund1)
+
+##################################
+#Calculate functional diversity metrics with FD:dbFD
+fd3<- FD::dbFD(traits, abund2)
+#############################################
+# bind functional diversity metrics with station data
+
+bd_funcDiv<-cbind(abund[1:2], fd3)
+save(bd_funcDiv, file=paste0("0_data/manual/bird/bd_FuncDiv", Sys.Date(), ".rData"))
+```
+
+Combine all diversity metrics into single dataframe
+```{r}
+bd_community<-bd_wide%>%
+  dplyr::select(c(SS, survey_year:surveyType))%>%
+  distinct()%>%
+  inner_join(bd_div)%>%
+  left_join(bd_funcDiv)%>%
+  dplyr::select(-c(CWM.Diet.Inv:CWM.BodyMass.Value))
+
+save(bd_community, file=paste0("0_data/manual/bird/bd_community", Sys.Date(), ".rData"))
+```
+
+
+### Get XY coordinates {-}
+
+Create spatial object with point count locations.
+
+```{r eval=FALSE}
+ss_xy<-bd_wide%>%
+  dplyr::select(SS, x, y)%>%
+  distinct()
+
+ss_xy<-st_as_sf(ss_xy, coords=c("x","y"), crs=4326)
+
+sx_xy<-st_transform(ss_xy, crs=3400)
+
+save(ss_xy, file="0_data/manual/spatial/bird/ss_xy.rData")
+st_write(ss_xy, "0_data/manual/spatial/bird/ss_xy.shp")
+
+```
 

@@ -1,0 +1,87 @@
+```{r setup, include=FALSE, cache=FALSE}
+#Set root directory to R project root
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+
+```{css, echo=FALSE}
+# set max height of code chunks using the following css styling
+
+pre {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+pre[class] {
+  max-height: 500px;
+}
+```
+
+This bird data was gathered and processed as part of chapter 3 of this Thesis. 
+
+
+## Import bird data
+```{r eval=FALSE}
+## Detections
+
+load("0_data/manual/bird/bd_wide.rData")
+
+## Community metrics
+### Diversity
+load("0_data/manual/bird/bd_div_1.rData")
+
+### Functional diversity
+load("0_data/manual/bird/bd_funcDiv_2.rData")
+
+## QPAD offsets
+load("0_data/manual/bird/ss_detect.rData")
+```
+
+## Get and count CAWA data
+
+```{r eval=FALSE}
+b<-bd_wide[-c(1:9)]
+totDet<-colSums(b !=0)
+totDet<-totDet[order(-totDet)]
+totDet<-as.data.frame(totDet)
+
+bd_CAWA<-bd_wide%>%
+  select(c(SS:source, CAWA))%>%
+  mutate(survey_year=as.character(year(as.Date(DATE))))
+
+
+b<-bd_CAWA%>%
+  select(CAWA)
+# total number of surveys with CAWA detec`tions
+totDet<-colSums(b !=0)
+
+# % of statrionswith CAWA detections
+CAWA_SS_sum<-bd_CAWA %>%
+  group_by(SS) %>%
+  summarise(Freq = sum(CAWA))
+
+# add occupancy column
+CAWA_SS_sum$occ[CAWA_SS_sum$Freq > 0] <- 1
+CAWA_SS_sum$occ[CAWA_SS_sum$Freq == 0] <- 0
+
+sum(CAWA_SS_sum$occ)/nrow(CAWA_SS_sum)
+```
+
+## Combine response variables into a single dataframe {-}
+
+```{r eval=FALSE}
+
+bd_div_all<-inner_join(bd_div, bd_funcDiv)
+
+ss_detect_2<-ss_detect%>%
+  select(SS, DATE, TIME, CAWA_off)
+
+bird_response_variables<-left_join(bd_CAWA, ss_detect_2)%>%
+      left_join(., bd_div_all, by=c("SS", "survey_year"))
+
+
+save(bird_response_variables, file="0_data/manual/bird/bird_response_variables.rData")
+```
+
+
+
