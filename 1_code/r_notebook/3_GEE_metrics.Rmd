@@ -1,0 +1,817 @@
+```{r setup, include=FALSE, cache=FALSE}
+#Set root directory to R project root
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+
+setwd(rprojroot::find_rstudio_root_file())
+```
+
+```{r eval=FALSE}
+library(dplyr)
+library(readr)
+```
+
+## GEE scripts {.unnumbered}
+
+Bring GEE scripts into the current rProject by cloning the GEE git and copying over the .js files.
+
+```{bash engine.opts='-l', eval=FALSE}
+# set directory to clone GEE git into (should be empty)
+cd 1_code/GEE
+
+# delete all .js files in directory
+rm *.js
+
+# clone gee scripts
+git clone https://earthengine.googlesource.com/users/bgcasey/harvest_severity_birds
+
+
+# add the .js file extention to files
+find harvest_severity_birds -type f -not -name "*.*" -exec mv "{}" "{}".js \;
+
+# move .js files up a directory
+mv -v harvest_severity_birds/*.js .
+
+# move functions folder up a directory
+mv -v harvest_severity_birds/functions/ .
+
+# delete .git folder
+rm -r harvest_severity_birds/
+```
+
+## GEE CSVs {.unnumbered}
+
+### Landcover metrics {-}
+
+```{r eval=FALSE}
+gee_metrics<-read_csv("0_data/manual/gee_tables/gee_metrics.csv")
+
+gee_metrics_2<-gee_metrics%>%  
+  dplyr::select(-c(histogram, "system:time_start", ".geo", "system:index", "count"))%>%
+  dplyr::select(SS, 17:18, 1:7, 9:16)%>%
+  dplyr::filter(landcover_yr==srvy_yr)%>%
+  dplyr::select(-landcover_yr)
+
+### add latitude
+library(sf)
+
+load("0_data/manual/spatial/bird/ss_xy.rData")
+
+ss_xy <- ss_xy %>%
+  ungroup() %>%
+  dplyr::mutate(lon = sf::st_coordinates(.)[,1],
+                lat = sf::st_coordinates(.)[,2])%>%
+  as.data.frame()%>%
+  dplyr::select(-geometry)%>%
+  rename(srvy_yr=survey_year)
+
+gee_metrics_3<-dplyr::left_join(gee_metrics_2, ss_xy, by=c("SS", "srvy_yr"))
+
+save(gee_metrics_3, file="2_pipeline/tmp/gee_metrics_3.rData")
+```
+
+## NBR {-}
+
+```{r importGEE_csv, eval=FALSE}
+
+filepath<-"0_data/manual/gee_tables/nbr/"
+
+#--- Get list of names for original metric GEE output files
+origFiles <- list.files(path=paste0(filepath, 'raw'), pattern="*.csv$", full.names=TRUE, recursive=FALSE)
+```
+
+
+
+##### Reformat each .csv file {-}
+
+```{r reformatGEEcsv, eval=FALSE}
+
+#--- For each file, do...
+for (i in 1:length(origFiles)) {
+  
+  #--- Message to user
+  print(paste("Reformatting file", i, "of", length(origFiles), "..."))
+  
+  #--- Import data from current file
+  thisDat <- fread(origFiles[i], data.table = FALSE)
+  
+  #--- Generate list of unique OBJECTID values
+  OIDs <- sort(unique(thisDat$OBJECTID), decreasing=FALSE)
+  
+  #--- Dataframe of survey and CAS-FRI info
+  surv<-unique(thisDat[c(1:4)])
+
+  #--- Compile vector of all unique metric values
+  metricList <- as.character(unique(thisDat$METRIC))
+  
+  #--- Create column names so that the mean and standard deviation of each metric have columns
+  fullMetricCols <- list()
+  for (n in 1:length(metricList)){
+    meanName <- paste0(metricList[n],"_mean")
+    stdevName <- paste0(metricList[n],"_stdev")
+    fullMetricCols <- c(fullMetricCols,meanName,stdevName)
+  }
+  
+  
+  #--- Reformat metric data to create new table
+  #--------------------------------------------
+  
+  #--- Initiatlize a dataframe, with OBJECTIDs in the first column
+  outMetTable <- data.frame("OBJECTID"=OIDs)
+  
+  #--- For each item in metricList, do the following:
+  for (j in 1:length(metricList)){
+    
+    #--- Subset thisDat, selecting rows where the current metric in the list
+    #---   is in the METRIC column, but output only the METRIC_MEAN and METRIC_STDEV columns
+    colData <- subset(thisDat, METRIC == metricList[j], select = c("OBJECTID","METRIC_MEAN","METRIC_STDEV"))
+    colData <- colData[order(colData["OBJECTID"]),]
+    outData <- subset(colData, select = c("METRIC_MEAN","METRIC_STDEV"))
+    
+    #--- Extract the corresponding, appropriate column names for metric [j] from fullMetricCols
+    metricPos <- which(fullMetricCols == paste0(metricList[j],"_mean"))
+    colnames(outData) <- fullMetricCols[c(metricPos,metricPos+1)]
+    
+    #--- Add the result to the outMetTable dataframe
+    outMetTable <- cbind(outMetTable, outData)
+  }
+  
+  
+  #--- Reformat flag data, and combine with metric data
+  #----------------------------------------------------
+  
+  #--- Create output data frame
+  flagData <- data.frame("TOT_PIXELS"=0,"PERC_UNMSKD"=0,"UNMSKD_PIXELS"=0,"MAX_CONNCTDPIX"=0,"PERC_NOHARVEST"=0,
+                         "PERC_MULTIDISTB"=0,"PERC_OUTOFRANGE"=0,"PERC_NOREGEN"=0,"PERC_NO5REGEN"=0,
+                         "PERC_NO10REGEN"=0,"PERC_NO15REGEN"=0,"PERC_NO20REGEN"=0)
+  
+  #--- List of relevant columns
+  flagCols <- c("TOT_PIXELS","PERC_UNMSKD","UNMSKD_PIXELS","MAX_CONNCTDPIX","PERC_NOHARVEST","PERC_MULTIDISTB",
+                "PERC_OUTOFRANGE","PERC_NOREGEN","PERC_NO5REGEN","PERC_NO10REGEN",
+                "PERC_NO15REGEN","PERC_NO20REGEN")
+  
+  #--- Extract "TOT_PIXELS", "UNMSKD_PIXELS", & other Flag columns for each OBJECTID
+  for (k in 1:length(OIDs)){
+    
+    #--- Find first occurrnce of current OBJECTID, extract flag column data,
+    #--- and add to flagData data frame
+    objRow <- match(OIDs[k], thisDat[,"OBJECTID"])
+    objFlags <- thisDat[objRow,flagCols]
+    flagData <- rbind(flagData,objFlags)
+    
+  }
+  
+  #--- Remove first row (full of zeros)
+  flagData <- flagData[-1,]
+  
+  #--- Add flag columns to metric information
+  outMetTable <- cbind(outMetTable, flagData)
+  
+  #-- add survey info to metric table
+  outMetTable_fin <-left_join(outMetTable,surv)
+  #outMetTable_fin <- outMetTable_fin[, c(1, 46:48, 2:45)]
+  outMetTable_fin <- outMetTable_fin[, c(1, 48:50, 2:47)]
+  
+  
+  
+  #--- Write to output file
+  #------------------------
+  
+  #--- Create output file name
+  fullName <- substr(origFiles[i], 1, nchar(origFiles[i])-4)
+  fileName <- substr(fullName, nchar(filepath)+4, nchar(fullName))
+  extension <- substr(origFiles[i], nchar(origFiles[i])-3, nchar(origFiles[i]))
+  outputName <- paste0(filepath,'reformatted',fileName,"_RFMTTD",extension)
+  #outputName <- paste0('../LandsatNBR/output/tables/reformatted/',fileName,"_RFMTTD",extension)
+  
+  
+  #--- Write to file
+  fwrite(outMetTable_fin, file = outputName)
+
+  #--- Output message to console
+  print(paste("Done."))
+  
+}
+
+```
+
+
+##### Compile reformatted files into one {-}
+
+
+```{r compile_reformatted_files, eval=FALSE}
+
+#--- Get list of names for new reformatted metric files
+rfmtFiles <- list.files(path=paste0(filepath, 'reformatted'), pattern="*_RFMTTD.csv", full.names=TRUE, recursive=TRUE)
+
+#--- Read in first file to create data frame
+rfmtDat <- fread(rfmtFiles[1], data.table = FALSE)
+
+#--- For remaining files, read in data and add to existing data frame
+for (m in 2:length(rfmtFiles)) {
+thisFile <- fread(rfmtFiles[m], data.table = FALSE)
+ rfmtDat <- rbind(rfmtDat, thisFile)
+}
+
+#--- Create new data frame for further additions, and modifications
+fullData <- rfmtDat[order(rfmtDat$OBJECTID),] #--- n = 172606 obs. of 45 variables
+
+str(fullData)
+
+save(fullData, file="2_pipeline/store/fulDataNBR_in.rData")
+```
+
+```{r fulDataNBR_in_table, echo=FALSE, results="asis"}
+load("2_pipeline/store/fulDataNBR_in.rData")
+
+knitr::kable(head(fullData)) %>%
+  kable_styling(font_size = 10, bootstrap_options= c("striped", "hover", "condensed" ), full_width= F, position="center") %>%
+  column_spec(1, width= "20em")%>%
+  scroll_box(width = "100%", height = "400px")
+```
+
+
+
+
+##### Calculate confidence scores and add to data frame {-}
+
+Calculate relative confidence scores for each HA polygon based on various flag and metric results, using table found in "JHird_ABMI_HArecovery_overview&prelimStats_20191004.pdf",where 0 = Very Low, 1=Low, 2=Medium-Low, 3=Medium, 4=Medium-High, 5=High, and 6=Very High
+
+
+```{r calculate_confidence_scores, eval=FALSE}
+
+#--- List of columns to use in calculations
+sizeCols <- c("OBJECTID","TOT_PIXELS","UNMSKD_PIXELS","PERC_UNMSKD","MAX_CONNCTDPIX","yod_stdev",
+              "lengthDistb_stdev", "totDistb_stdev","totRegen_stdev","yrTo80_stdev", "regen5yr_stdev")
+
+#--- Extract selected columns
+confTable <- fullData[sizeCols]
+
+#--- Set up data frame for calculations
+confTable <- cbind(confTable,"sizeConf"=0,"availPixConf"=0,"contgPixConf"=0,"yodConf"=0,
+                   "t2regenConf"=0,"distbConf"=0,"regenConf"=0, "y2r80Conf"=0, "reg5yrConf"=0)
+
+
+#--- Calculate: value of "sizeConf"
+#----------------------------------
+
+#--- Where total pixel count is < 1, sizeConf=0
+nolt1 <- which(confTable$TOT_PIXELS < 1)
+confTable[nolt1, "sizeConf"] <- 0
+
+#--- where count is >=1 & <11, sizeConf=1
+nogte1 <- which(confTable$TOT_PIXELS >= 1 &
+                  confTable$TOT_PIXELS < 11)
+confTable[nogte1, "sizeConf"] <- 1
+
+#--- where count is >=11 & <20, sizeConf=2
+nogte11 <- which(confTable$TOT_PIXELS >= 11 &
+                   confTable$TOT_PIXELS < 20)
+confTable[nogte11, "sizeConf"] <- 2
+
+#--- where count is >=20 & <30, sizeConf=3
+nogte20 <- which(confTable$TOT_PIXELS >= 20 &
+                   confTable$TOT_PIXELS < 30)
+confTable[nogte20, "sizeConf"] <- 3
+
+#--- where count is >=30 & <100, sizeConf=4
+nogte30 <- which(confTable$TOT_PIXELS >= 30 &
+                   confTable$TOT_PIXELS < 100)
+confTable[nogte30, "sizeConf"] <- 4
+
+#--- where count is >=100 & <200, sizeConf=5
+nogte100 <- which(confTable$TOT_PIXELS >= 100 &
+                    confTable$TOT_PIXELS < 200)
+confTable[nogte100, "sizeConf"] <- 5
+
+#--- where count is >=100 & <200, sizeConf=5
+nogte200 <- which(confTable$TOT_PIXELS >= 200)
+confTable[nogte200, "sizeConf"] <- 6
+
+
+#--- Calculate: value of "availPixConf"
+#--------------------------------------
+
+#--- Where percentage of unmasked pixels is < 50%, availPixConf=0
+availLt50 <- which(confTable$PERC_UNMSKD < 50.0)
+confTable[availLt50, "availPixConf"] <- 0
+
+#--- where percentage is >=50% & <60%, availPixConf=1
+availgte50 <- which(confTable$PERC_UNMSKD >= 50.0 &
+                      confTable$PERC_UNMSKD < 60.0)
+confTable[availgte50, "availPixConf"] <- 1
+
+#--- where percentage is >=60% & <70%, availPixConf=2
+availgte60 <- which(confTable$PERC_UNMSKD >= 60.0 &
+                      confTable$PERC_UNMSKD < 70.0)
+confTable[availgte60, "availPixConf"] <- 2
+
+#--- where percentage is >=70% & <80%, availPixConf=3
+availgte70 <- which(confTable$PERC_UNMSKD >= 70.0 &
+                      confTable$PERC_UNMSKD < 80.0)
+confTable[availgte70, "availPixConf"] <- 3
+
+#--- where percentage is >=80% & <90%, availPixConf=4
+availgte80 <- which(confTable$PERC_UNMSKD >= 80.0 &
+                      confTable$PERC_UNMSKD < 90.0)
+confTable[availgte80, "availPixConf"] <- 4
+
+#--- where percentage is >=90% & <100%, availPixConf=5
+availgte90 <- which(confTable$PERC_UNMSKD >= 90.0 &
+                      confTable$PERC_UNMSKD < 100.0)
+confTable[availgte90, "availPixConf"] <- 5
+
+#--- where percentage is 100%, availPixConf=6
+avail100 <- which(confTable$PERC_UNMSKD == 100.0)
+confTable[avail100, "availPixConf"] <- 6
+
+
+#--- Calculate: value of "contgPixConf"
+#--------------------------------------
+
+#--- Where number of contiguous pixels is < 5, contgPixConf=0
+ctglt0 <- which(confTable$MAX_CONNCTDPIX <= 0)
+confTable[ctglt0, "contgPixConf"] <- 0
+
+#--- Where number of contiguous pixels is >= 5 & < 11, contgPixConf=1
+ctglte2 <- which(confTable$MAX_CONNCTDPIX > 0 &
+                   confTable$MAX_CONNCTDPIX <= 2)
+confTable[ctglte2, "contgPixConf"] <- 1
+
+#--- Where number of contiguous pixels is >= 5 & < 11, contgPixConf=2
+ctglte4 <- which(confTable$MAX_CONNCTDPIX > 2 &
+                   confTable$MAX_CONNCTDPIX <= 4)
+confTable[ctglte4, "contgPixConf"] <- 2
+
+#--- Where number of contiguous pixels is >= 5 & < 11, contgPixConf=3
+ctglte6 <- which(confTable$MAX_CONNCTDPIX > 4 &
+                   confTable$MAX_CONNCTDPIX <= 6)
+confTable[ctglte6, "contgPixConf"] <- 3
+
+#--- Where number of contiguous pixels is >= 5 & < 11, contgPixConf=4
+ctglte8 <- which(confTable$MAX_CONNCTDPIX > 6 &
+                   confTable$MAX_CONNCTDPIX <= 8)
+confTable[ctglte8, "contgPixConf"] <- 4
+
+#--- Where number of contiguous pixels is >= 5 & < 11, contgPixConf=5
+ctglte10 <- which(confTable$MAX_CONNCTDPIX > 8 &
+                    confTable$MAX_CONNCTDPIX <= 10)
+confTable[ctglte10, "contgPixConf"] <- 5
+
+#--- Where number of contiguous pixels is >= 11 & < 15, contgPixConf=2
+ctgGte11 <- which(confTable$MAX_CONNCTDPIX >= 11)
+confTable[ctgGte11, "contgPixConf"] <- 6
+
+
+#--- Calculate: value of "yodConf"
+#---------------------------------
+
+#--- Where std dev of yod is >= 3 (years), yodConf=0
+yodgte3 <- which(confTable$yod_stdev >= 3)
+confTable[yodgte3, "yodConf"] <- 0
+
+#--- Where std dev of yod is >= 2.5 & < 3, yodConf=1
+yodgte25 <- which(confTable$yod_stdev >= 2.5 &
+                    confTable$yod_stdev < 3)
+confTable[yodgte25, "yodConf"] <- 1
+
+#--- Where std dev of yod is >= 2 & < 2.5, yodConf=2
+yodgte2 <- which(confTable$yod_stdev >= 2 &
+                   confTable$yod_stdev < 2.5)
+confTable[yodgte2, "yodConf"] <- 2
+
+#--- Where std dev of yod is >= 1.5 & < 2, yodConf=3
+yodgte15 <- which(confTable$yod_stdev >= 1.5 &
+                    confTable$yod_stdev < 2)
+confTable[yodgte15, "yodConf"] <- 3
+
+#--- Where std dev of yod is >= 1 & < 1.5, yodConf=4
+yodgte1 <- which(confTable$yod_stdev >= 1  &
+                   confTable$yod_stdev < 1.5)
+confTable[yodgte1, "yodConf"] <- 4
+
+#--- Where std dev of yod is >= 0.5 & < 1, yodConf=5
+yodgte05 <- which(confTable$yod_stdev >= 0.5 &
+                    confTable$yod_stdev < 1)
+confTable[yodgte05, "yodConf"] <- 5
+
+#--- Where std dev of yod is < 0.5, yodConf=6
+yodlt05 <- which(confTable$yod_stdev < 0.5)
+confTable[yodlt05, "yodConf"] <- 6
+
+
+#--- Calculate: value of "t2regenConf"
+#-------------------------------------
+
+#--- Where std dev of lengthDistb is >= 3 (years), t2regenConf=0
+t2reggte3 <- which(confTable$lengthDistb_stdev >= 3)
+confTable[t2reggte3, "t2regenConf"] <- 0
+
+#--- Where std dev of lengthDistb is >= 2 & < 3 (years), t2regenConf=1
+t2reggte2 <- which(confTable$lengthDistb_stdev >= 2 &
+                     confTable$lengthDistb_stdev < 3)
+confTable[t2reggte2, "t2regenConf"] <- 1
+
+#--- Where std dev of lengthDistb is >= 1.5 & < 2 (years), t2regenConf=2
+t2reggte15 <- which(confTable$lengthDistb_stdev >= 1.5 &
+                      confTable$lengthDistb_stdev < 2)
+confTable[t2reggte15, "t2regenConf"] <- 2
+
+#--- Where std dev of lengthDistb is >= 1 & < 1.5 (years), t2regenConf=3
+t2reggte1 <- which(confTable$lengthDistb_stdev >= 1 &
+                     confTable$lengthDistb_stdev < 1.5)
+confTable[t2reggte1, "t2regenConf"] <- 3
+
+#--- Where std dev of lengthDistb is >= 0.75 & < 1 (years), t2regenConf=4
+t2reggte075 <- which(confTable$lengthDistb_stdev >= 0.75 &
+                       confTable$lengthDistb_stdev < 1)
+confTable[t2reggte075, "t2regenConf"] <- 4
+
+#--- Where std dev of lengthDistb is >= 0.25 & < 0.75 (years), t2regenConf=5
+t2reggte025 <- which(confTable$lengthDistb_stdev >= 0.25 &
+                       confTable$lengthDistb_stdev < 0.75)
+confTable[t2reggte025, "t2regenConf"] <- 5
+
+#--- Where std dev of lengthDistb is > 0.25 (years), t2regenConf=6
+t2reglt025 <- which(confTable$lengthDistb_stdev < 0.25)
+confTable[t2reglt025, "t2regenConf"] <- 6
+
+
+#--- Calculate: value of "distbConf"
+#-----------------------------------
+
+#--- Where std dev of totDistb is >= 200 (NBR units), totDistbConf=0
+totDtbgte200 <- which(confTable$totDistb_stdev >= 200)
+confTable[totDtbgte200, "distbConf"] <- 0
+
+#--- Where std dev of totDistb is >= 150 & < 200 (NBR units), totDistbConf=1
+totDtbgte150 <- which(confTable$totDistb_stdev >= 150 &
+                        confTable$totDistb_stdev < 200)
+confTable[totDtbgte150, "distbConf"] <- 1
+
+#--- Where std dev of totDistb is >= 125 & < 150 (NBR units), totDistbConf=2
+totDtbgte125 <- which(confTable$totDistb_stdev >= 125 &
+                        confTable$totDistb_stdev < 150)
+confTable[totDtbgte125, "distbConf"] <- 2
+
+#--- Where std dev of totDistb is >= 115 & < 125 (NBR units), totDistbConf=3
+totDtbgte115 <- which(confTable$totDistb_stdev >= 115 &
+                        confTable$totDistb_stdev < 125)
+confTable[totDtbgte115, "distbConf"] <- 3
+
+#--- Where std dev of totDistb is >= 100 & < 115 (NBR units), totDistbConf=4
+totDtbgte100 <- which(confTable$totDistb_stdev >= 100 &
+                        confTable$totDistb_stdev < 115)
+confTable[totDtbgte100, "distbConf"] <- 4
+
+#--- Where std dev of totDistb is >= 75 & < 100 (NBR units), totDistbConf=5
+totDtbgte75 <- which(confTable$totDistb_stdev >= 75 &
+                       confTable$totDistb_stdev < 100)
+confTable[totDtbgte75, "distbConf"] <- 5
+
+#--- Where std dev of totDistb is < 75 (NBR units), totDistbConf=6
+totDtblt75 <- which(confTable$totDistb_stdev < 75)
+confTable[totDtblt75, "distbConf"] <- 6
+
+
+#--- Calculate: value of "regenConf"
+#-----------------------------------
+
+#--- Where std dev of totRegen is >= 30 (precent regeneration), totRegnConf=0
+totReggte30 <- which(confTable$totRegen_stdev >= 30)
+confTable[totReggte30, "regenConf"] <- 0
+
+#--- Where std dev of totRegen is >= 25 & < 30 (precent regeneration), totRegnConf=1
+totReggte25 <- which(confTable$totRegen_stdev >= 25 &
+                       confTable$totRegen_stdev < 30)
+confTable[totReggte25, "regenConf"] <- 1
+
+#--- Where std dev of totRegen is >= 20 & < 25 (precent regeneration), totRegnConf=2
+totReggte20 <- which(confTable$totRegen_stdev >= 20 &
+                       confTable$totRegen_stdev < 25)
+confTable[totReggte20, "regenConf"] <- 2
+
+#--- Where std dev of totRegen is >= 15 & < 20 (precent regeneration), totRegnConf=3
+totReggte15 <- which(confTable$totRegen_stdev >= 15 &
+                       confTable$totRegen_stdev < 20)
+confTable[totReggte15, "regenConf"] <- 3
+
+#--- Where std dev of totRegen is >= 10 & < 15 (precent regeneration), totRegnConf=4
+totReggte10 <- which(confTable$totRegen_stdev >= 10 &
+                       confTable$totRegen_stdev < 15)
+confTable[totReggte10, "regenConf"] <- 4
+
+#--- Where std dev of totRegen is >= 6 & < 10 (precent regeneration), totRegnConf=5
+totReggte6 <- which(confTable$totRegen_stdev >= 6 &
+                      confTable$totRegen_stdev < 10)
+confTable[totReggte6, "regenConf"] <- 5
+
+#--- Where std dev of totRegen is < 6 (precent regeneration), totRegnConf=6
+totReglt6 <- which(confTable$totRegen_stdev < 6)
+confTable[totReglt6, "regenConf"] <- 6
+
+
+#--- Calculate confidence scores from Y2R80 std dev metric
+#---------------------------------------------------------
+
+# yrTo80_stdev::
+# ----------------
+#  max: 12.5
+#  min: 0
+#  mean: 2.225699
+#  median: 2.061553
+#  Stdev: 1.4598
+
+#--- Where std dev of Y2R80 is >= 3.5, confidence is very low
+gte3.5 <- which(confTable$yrTo80_stdev >= 3.5)
+confTable[gte3.5, "y2r80Conf"] <- 0
+
+#--- Where std dev of Y2R80 is >= 3 & < 3.5, confidence is low
+gte3 <- which(confTable$yrTo80_stdev >= 3 &
+                confTable$yrTo80_stdev < 3.5)
+confTable[gte3, "y2r80Conf"] <- 1
+
+#--- Where std dev of Y2R80 is >= 2.5 & < 3, confidence is medium-low
+gte2.5 <- which(confTable$yrTo80_stdev >= 2.5 &
+                  confTable$yrTo80_stdev < 3)
+confTable[gte2.5, "y2r80Conf"] <- 2
+
+#--- Where std dev of Y2R80 is >= 2 & < 2.5, confidence is medium
+gte2 <- which(confTable$yrTo80_stdev >= 2 &
+                confTable$yrTo80_stdev < 2.5)
+confTable[gte2, "y2r80Conf"] <- 3
+
+#--- Where std dev of Y2R80 is >= 1.5 & < 2, confidence is medium-high
+gte1.5 <- which(confTable$yrTo80_stdev >= 1.5 &
+                  confTable$yrTo80_stdev < 2)
+confTable[gte1.5, "y2r80Conf"] <- 4
+
+#--- Where std dev of Y2R80 is >= 0.5 & < 1.5, confidence is high
+gte05 <- which(confTable$yrTo80_stdev >= 0.5 &
+                 confTable$yrTo80_stdev < 1.5)
+confTable[gte05, "y2r80Conf"] <- 5
+
+#--- Where std dev of Y2R80 is < 0.5, confidence is very high
+lt05 <- which(confTable$yrTo80_stdev < 0.5)
+confTable[lt05, "y2r80Conf"] <- 6
+
+
+#--- Calculate confidence scores from Y2R80 std dev metric
+#---------------------------------------------------------
+#** ADDED IN CONF SCORES FOR VARIABILITY IN 5-YR REGEN:: (09-01-2020)
+
+# hist(inData$regen5yr_stdev)
+
+# regen5yr_stdev::
+# ----------------
+#  max: 91.202222
+#  min: 0
+#  mean: 14.61652
+#  median: 14.24198
+#  Stdev: 7.407865
+
+# > 30: very low
+# 25-30: low
+# 20-25: med-low
+# 15-20: med
+# 10-15: med high
+# 5-10: high
+# < 5: very high
+
+#--- Where std dev of 5yr Regen is >= 30, confidence is very low
+yr5gt30 <- which(confTable$regen5yr_stdev >= 30)
+confTable[yr5gt30, "reg5yrConf"] <- 0
+
+#--- Where std dev of 5yr Regen is >= 25 & < 30, confidence is low
+yr5gte25 <- which(confTable$regen5yr_stdev >= 25 &
+                confTable$regen5yr_stdev < 30)
+confTable[yr5gte25, "reg5yrConf"] <- 1
+
+#--- Where std dev of 5yr Regen is >= 20 & < 25, confidence is med-low
+yr5gte20 <- which(confTable$regen5yr_stdev >= 20 &
+                    confTable$regen5yr_stdev < 25)
+confTable[yr5gte20, "reg5yrConf"] <- 2
+
+#--- Where std dev of 5yr Regen is >= 15 & < 20, confidence is medium
+yr5gte15 <- which(confTable$regen5yr_stdev >= 15 &
+                    confTable$regen5yr_stdev < 20)
+confTable[yr5gte15, "reg5yrConf"] <- 3
+
+#--- Where std dev of 5yr Regen is >= 10 & < 15, confidence is med-high
+yr5gte10 <- which(confTable$regen5yr_stdev >= 10 &
+                    confTable$regen5yr_stdev < 15)
+confTable[yr5gte10, "reg5yrConf"] <- 4
+
+#--- Where std dev of 5yr Regen is >= 5 & < 10, confidence is high
+yr5gte5 <- which(confTable$regen5yr_stdev >= 5 &
+                    confTable$regen5yr_stdev < 10)
+confTable[yr5gte5, "reg5yrConf"] <- 5
+
+#--- Where std dev of 5yr Regen is < 5, confidence is very high
+yr5lt5 <- which(confTable$regen5yr_stdev < 5)
+confTable[yr5lt5, "reg5yrConf"] <- 6
+
+
+
+#--- Add sum and mean of confidence scores, to compare two types of overall scores
+#--- -----------------------------------------------------------------------------
+
+#--- Sum calculated confidence scores for each object, and place into 'sumConf' column
+confTable$sumConf <- apply(confTable[,c("sizeConf", "availPixConf", "contgPixConf", "yodConf",
+                                        "t2regenConf", "distbConf", "regenConf", "y2r80Conf", "reg5yrConf")], 1,
+                           function(x) sum(x))
+
+#--- Reorder fullData and confTable to ensure they're in the same order
+fullData <- fullData[order(fullData["OBJECTID"]),]
+confTable <- confTable[order(confTable["OBJECTID"]),]
+
+# #--- Plot to make sure they all line up
+# plot(fullData$OBJECTID, confTable$OBJECTID)
+
+#--- Extract confidence score columns from confTable
+selConfTableCols <- subset(confTable, select = c("sizeConf", "availPixConf", "contgPixConf", "yodConf",
+                                                 "t2regenConf", "distbConf", "regenConf", "y2r80Conf",
+                                                 "reg5yrConf", "sumConf"))
+
+#--- Combine fullData with calculated confidence score columns
+finalFullTable <- cbind(fullData, selConfTableCols)
+
+str(finalFullTable) #--- 172606 obs. of 55 variables
+
+
+
+#--------------------------------------------------------------------------------------------
+#--- Output full data set to CSV
+#--------------------------------------------------------------------------------------------
+
+save(finalFullTable, file="2_pipeline/store/finalFullTable_in.rData")
+#--- Write to csv
+fwrite(finalFullTable, file=paste0(filepath,"/final/NBR_allMets_finalFullTable.csv"))
+
+```
+
+
+```{r echo=FALSE, results="asis"}
+load("2_pipeline/store/finalFullTable_in.rData")
+
+knitr::kable(head(finalFullTable)) %>%
+  kable_styling(font_size = 10, bootstrap_options= c("striped", "hover", "condensed" ), full_width= F, position="center") %>%
+  column_spec(1, width= "20em")%>%
+  scroll_box(width = "100%", height = "400px")
+```
+
+
+
+##### Remove inappropriate, low-confidence, and/or irrelevant records {-}
+
+
+```{r cleanGEEdata, eval=FALSE}
+
+##--- Create new data frame for cleaning
+cleanData <- finalFullTable
+dim(cleanData) #15815 
+
+#--- Remove records based on NA values, numbers of pixels, and % of HA unmasked::
+#--------------------------------------------------------------------------------
+
+#--- Remove rows with NA values
+length(which(is.na(cleanData$preDistMean_mean))) #--- n = 7468 (rows with NA values)
+cleanData <- cleanData[which(!is.na(cleanData$preDistMean_mean)),]
+dim(cleanData) #--- n = 8351 obs.
+
+cleanData_na<-cleanData
+
+save(cleanData_na, file="2_pipeline/store/NBR_clean_NA_in")
+
+#--- Remove rows with < 9 total pixels
+length(which(cleanData$UNMSKD_PIXELS < 9)) #--- n = 37804 (rows total available pixels < 9)
+cleanData <- cleanData[which(cleanData$UNMSKD_PIXELS >= 9),]
+dim(cleanData) #--- n = 4733 obs.
+
+#--- Examine how many rows with no. connected pix < 9 and < 11
+length(which(cleanData$MAX_CONNCTDPIX < 9)) #--- n = 3001
+length(which(cleanData$MAX_CONNCTDPIX < 11)) #--- n = 4364
+cleanData <- cleanData[which(cleanData$MAX_CONNCTDPIX >= 11),]
+dim(cleanData)
+
+#--- Remove rows/data records wherein >50% of pixels are flagged and masked out
+length(which(cleanData$PERC_UNMSKD < 50)) #--- n = 15792
+cleanData <- cleanData[which(cleanData$PERC_UNMSKD >= 50),]
+dim(cleanData) #--- n = 1274 obs.
+
+#--- Remove values for 10-yr, 15-yr, and 20-yr regen where not appropriate::
+#---------------------------------------------------------------------------
+
+#---  Set all 20-yr, 15-yr, and 10-yr regen to NA where <50% of pixels in a
+#---    harvest area are available to calculate these
+length(which(cleanData$PERC_NO20REGEN > 50.0)) #--- n = 50017
+no20yrRows <- which(cleanData$PERC_NO20REGEN > 50.0)
+cleanData[no20yrRows, c("regen20yr_mean","regen20yr_stdev")] <- NA
+
+head(cleanData[which(cleanData$PERC_NO20REGEN > 50.0),c("OBJECTID","PERC_NO20REGEN","regen20yr_mean","regen20yr_stdev")], 20)
+
+length(which(cleanData$PERC_NO15REGEN > 50.0)) #--- n = 31500
+no15yrRows <- which(cleanData$PERC_NO15REGEN > 50.0)
+cleanData[no15yrRows, c("regen15yr_mean","regen15yr_stdev")] <- NA
+
+head(cleanData[which(cleanData$PERC_NO15REGEN > 50.0),c("OBJECTID","PERC_NO15REGEN","regen15yr_mean","regen15yr_stdev")], 20)
+
+length(which(cleanData$PERC_NO10REGEN > 50.0)) #--- n = 13817
+no10yrRows <- which(cleanData$PERC_NO10REGEN > 50.0)
+cleanData[no10yrRows, c("regen10yr_mean","regen10yr_stdev")] <- NA
+
+head(cleanData[which(cleanData$PERC_NO10REGEN > 50.0),c("OBJECTID","PERC_NO10REGEN","regen10yr_mean","regen10yr_stdev")], 20)
+
+length(which(cleanData$PERC_NO5REGEN > 50.0)) #--- n = 0
+no5yrRows <- which(cleanData$PERC_NO5REGEN > 50.0)
+cleanData[no5yrRows, c("regen5yr_mean","regen5yr_stdev")] <- NA
+
+
+#--- Remove records based on low confidence scores::
+#---------------------------------------------------
+
+#--- Examine low-confidence data records
+head(cleanData[,c(1,grep("Conf",colnames(cleanData)))],50)
+head(cleanData[order(cleanData$sumConf),c(1,grep("Conf",colnames(cleanData)))], 50)
+
+dim(cleanData[which(cleanData$yodConf < 4),])   #n = 6,084
+dim(cleanData[which(cleanData$distbConf < 4),]) #n = 17,375
+dim(cleanData[which(cleanData$regenConf < 4),]) #n = 25,143
+dim(cleanData[which(cleanData$y2r80Conf < 4),]) #n = 41,329
+
+dim(cleanData[which(cleanData$sumConf <= 20),]) #n = 128
+dim(cleanData[which(cleanData$sumConf <= 22),]) #n = 280
+dim(cleanData[which(cleanData$sumConf <= 25),]) #n = 876
+dim(cleanData[which(cleanData$sumConf <= 30),]) #n = 4352
+
+hist(cleanData$sumConf)
+meanConfScr <- mean(cleanData$sumConf) #mean = 39.26253
+meanConfScr
+sdConfScr <- sd(cleanData$sumConf)   #sd = 5.054748
+sdConfScr
+
+sd2below <- meanConfScr - (2 * sdConfScr)
+sd2below #2 stdev below mean = 29.15304
+sd3below <- meanConfScr - (3 * sdConfScr)
+sd3below #3 stdev below mean = 24.09829
+
+dim(cleanData[which(cleanData$sumConf <= 24 |
+                    cleanData$yodConf < 4),]) #n = 6121
+
+#--- Remove rows with < 4 as a yodConf (year of harvest confidence score)
+cleanData <- cleanData[which(cleanData$yodConf >=4),]
+dim(cleanData) #n = 66,204
+
+min(cleanData$sumConf) #min = 18
+head(cleanData[order(cleanData$sumConf),c(1,grep("Conf",colnames(cleanData)))], 50)
+hist(cleanData$sumConf)
+
+#--- Remove rows with < 24 as a total confidence score
+cleanData <- cleanData[which(cleanData$sumConf >= 24),]
+dim(cleanData) #n = 1160
+
+str(cleanData)
+
+#------------------------
+#Combine filtered and unfiltered data add a column for data that categroizes data by data I'm confident in and data that I'm not confident in
+#-------------------------
+
+t<-anti_join(cleanData_na, cleanData, by = c("OBJECTID", "SS", "cas_id", "srvy_yr"))
+dim(t) #7191
+
+t$highConf="n"
+cleanData$highConf="y"
+
+nbr_cleanData_in<-rbind(cleanData,t)
+
+save(nbr_cleanData_in, file="2_pipeline/store/nbr_cleanData_in.rDATA")
+#--------------------------------------------------------------------------------------------
+#--- Output clean data set to CSV
+#--------------------------------------------------------------------------------------------
+
+#--- Write to csv
+fwrite(nbr_cleanData_in, file=paste0(filepath,"final/nbr_cleanData_in.csv"))
+
+```
+
+
+The final table has a column that categorizes data by data I'm confident in and data that I'm not confident in.
+
+```{r showNBRtable, echo=FALSE, results="asis"}
+load("2_pipeline/store/nbr_cleanData_in.rDATA")
+knitr::kable(head(nbr_cleanData_in)) %>%
+  kable_styling(font_size = 12, bootstrap_options= c("striped", "hover", "condensed" ), full_width= F, position="center") %>%
+  column_spec(1, width= "20em")%>%
+  scroll_box(width = "100%", height = "400px")
+```
+
+
+
+### Join with response variable {.unnumbered}
+
+```{r eval=FALSE}
+load("0_data/manual/iButton_data/iButton_cNA_diff.rData")
+
+data_full<-left_join(iButton_cNA_diff, gee_cov_all, by=c("Project", "Site_StationKey", "Month", "Year"))%>%
+  dplyr::select(-date)%>%
+  as.data.frame()
+```

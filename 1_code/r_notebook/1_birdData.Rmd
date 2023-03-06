@@ -1,4 +1,4 @@
-## Response variables
+## Response variables {-}
  
 ```{r setup, include=FALSE, cache=FALSE}
 #Set root directory to R project root
@@ -10,7 +10,7 @@ library(tidyverse)
 ```
 
 
-### BAM data
+### BAM data {-}
 
 ```{r readBAM, eval=FALSE}
 BAM<-read.csv("0_data/external/BAM_ss_spp.csv", header = TRUE)
@@ -41,7 +41,7 @@ b$DATE<-as.Date(b$DATE)
 ```
 
 
-### WildTrax data
+### WildTrax data {-}
 
 *See the wildRtrax article here for more details on authentication:* <https://abbiodiversity.github.io/wildRtrax/articles/authenticating-into-wt.html>
 
@@ -328,7 +328,7 @@ bd_f<-semi_join(bd_a, totDet_f_2, by=c("SPECIES"="spp"), copy=TRUE)
 save(bd_f, file = paste0("0_data/manual/bird/bd_f_", Sys.Date(), ".rData"))
 ```
 
-### Format 
+### Format {-}
 ```{r}
 bd_wide<-spread(bd_f, SPECIES, ABUND, fill=0)%>%
   mutate(survey_year=year(DATE))%>%

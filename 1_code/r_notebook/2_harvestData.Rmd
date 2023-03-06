@@ -4,7 +4,6 @@
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
-
 ```{r eval=FALSE}
 library(sf)
 ```
@@ -50,6 +49,36 @@ abmi_regen<-st_read("../Data/ABMI/ABMI_HarvAreaSpecRegn2019_v1/ABMI_HarvestArea_
 
 
 ### Join with point count locations {-}
+
+
+#### Distance to edge {-}
+
+Calculate distance of pointcoints to nearest harvest edge.
+
+```{r eval=FALSE}
+# get the boundary of shape files
+pb<-st_boundary(abmi_harvest)
+
+#identify the nearest polygon to each point
+nearest = st_nearest_feature(ss_xy, abmi_harvest)
+
+ #Then use st_distance to get the element-wise distances between each element of points and the corresponding element of boundary polygons:
+dist = st_distance(ss_xy, pb[nearest,], by_element=TRUE)
+
+# join the ponts and nearest polygons
+bd_xy_edge = cbind(ss_xy, st_drop_geometry(pb)[nearest,])
+
+#Then add the distance values
+bd_xy_edge$dist_to_edge = dist
+bd_xy_edge<-bd_xy_edge%>%
+  as.data.frame()%>%
+  dplyr::select(survey_year, SS, HFI_ID, dist_to_edge)
+
+save(bd_xy_edge, file ="2_pipeline/tmp/bd_xy_edge.rData")
+```
+
+#### Join {-}
+
 ```{r eval=FALSE}
 casfri_harvest<-st_read("0_data/manual/spatial/harvest/casfri_harvest.shp")
 abmi_harvest<-st_read("0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
@@ -60,22 +89,29 @@ ss_xy <- st_transform(ss_xy, crs = 3400)
 
 ss_xy_harvest<-st_join(ss_xy, casfri_harvest)%>%
   st_join(abmi_harvest)%>%
-  dplyr::filter(!is.na(cas_id)|!is.na(HFI_ID)) 
+  dplyr::filter(!is.na(cas_id)|!is.na(HFI_ID))%>%
+  dplyr::mutate(dist_to_edge=st_distance(ss_xy, HFI_ID))
 
 ss_xy_harvest_df<-ss_xy_harvest%>%
-  dplyr::select(c("SS","survey_year", "cas_id", "dist_2", "dst_y_1", "dst_xt_p_1", "dist_2", "dst_y_2", , "dst_xt_p_2", "HFI_ID",  "YEAR", "Mdfr_Yr"))%>%
+  dplyr::select(c("SS","survey_year", "cas_id", "dist_1", "dst_y_1", "dst_xt_p_1", "dist_2", "dst_y_2", , "dst_xt_p_2", "HFI_ID",  "YEAR", "Mdfr_Yr"))%>%
   dplyr::mutate(dst_y_2 = replace(dst_y_2, dst_y_2== -1111, NA))%>%
   dplyr::mutate(dist_1_2_diff=dst_y_2-dst_y_1)%>%
   dplyr::rename(c(dist_yr_1=dst_y_1, dist_yr_2=dst_y_2, dist_ext_upper_1=dst_xt_p_1, dist_ext_upper_2=dst_xt_p_2))%>%
   as.data.frame()%>%
-  dplyr::select(c("SS","survey_year", "cas_id", "dist_2", "dist_yr_1", "dist_ext_upper_1", "dist_2", "dist_yr_2", "dist_ext_upper_2", "dist_1_2_diff", "HFI_ID",  "YEAR", "Mdfr_Yr"))#%>%
+  # left_join(bd_xy_edge, by = c("SS", "survey_year", "HFI_ID"))%>%
+  left_join(bd_xy_edge, by = c("SS", "survey_year", "HFI_ID"))%>%# add distance to edge column
+  dplyr::select(c("SS","survey_year", "dist_to_edge", "cas_id",  "dist_1", "dist_yr_1", "dist_ext_upper_1", "dist_2", "dist_yr_2", "dist_ext_upper_2", "dist_1_2_diff", "HFI_ID",  "YEAR", "Mdfr_Yr"))#%>%
 #   dplyr::filter(survey_year>=YEAR|survey_year>=dst_y_1)
 #            as.data.frame()
 save(ss_xy_harvest_df, file=paste0("0_data/manual/spatial/ss_xy_harvest_df_", Sys.Date(), ".rData"))
 
 nrow(as.data.frame(unique(ss_xy_harvest_df$SS)))
 #3679           
-```
 
+# test<-ss_xy_harvest_df%>%
+#   filter(!is.na(HFI_ID))
+# nrow(as.data.frame(unique(test$HFI_ID)))
+# #3679           
+```
 
 
