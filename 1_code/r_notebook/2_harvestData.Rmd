@@ -5,15 +5,13 @@ knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
 
-
-```{r}
+```{r eval=FALSE}
 library(sf)
 ```
 
+## CAS-FRI Harvest data {-}
 
-## CAS-FRI Harvest data
-
-### Import CAS-FRI polygons
+### Import CAS-FRI polygons {-}
 ```{r eval=FALSE}
 fgdb <- "../Data/CASFRI/Alberta/alberta_geo.gdb"
 fc_list <- ogrListLayers(fgdb)
@@ -40,72 +38,43 @@ casfri_harvest<-casfri%>%
 st_write(casfri_harvest, "0_data/manual/spatial/harvest/casfri_harvest.shp")
 ```
 
-
-### ABMI harvests 
+### ABMI harvests {-}
 ```{r}
 abmi<-st_read("../Data/ABMI/HFI_2019_v2.gdb", layer="o18_HarvestAreas_HFI_2019")
+abmi$uniqueID <- 1:nrow(abmi) 
+
 st_write(abmi, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
+
 abmi_regen<-st_read("../Data/ABMI/ABMI_HarvAreaSpecRegn2019_v1/ABMI_HarvestArea_SpectralRegeneration_2019_v1.shp")
 ```
 
 
-### Join with point count locations
+### Join with point count locations {-}
 ```{r eval=FALSE}
+casfri_harvest<-st_read("0_data/manual/spatial/harvest/casfri_harvest.shp")
+abmi_harvest<-st_read("0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
 load("0_data/manual/spatial/bird/ss_xy.rData")
 
-ss_xy <- st_transform(ss_xy, crs = st_crs(casfri_harvest))
+casfri_harvest <- st_transform(casfri_harvest, crs = 3400)
+ss_xy <- st_transform(ss_xy, crs = 3400)
 
 ss_xy_harvest<-st_join(ss_xy, casfri_harvest)%>%
-  st_transform(crs = st_crs(abmi))%>%
-  st_join(abmi)%>%
+  st_join(abmi_harvest)%>%
   dplyr::filter(!is.na(cas_id)|!is.na(HFI_ID)) 
 
-
-
 ss_xy_harvest_df<-ss_xy_harvest%>%
-  dplyr::select(c("SS","survey_year", "cas_id", "dst_y_1", "HFI_ID",  "YEAR", "dist_2", "dst_y_2", "dst_xt_p_1", "Mdfr_Yr"))%>%
+  dplyr::select(c("SS","survey_year", "cas_id", "dist_2", "dst_y_1", "dst_xt_p_1", "dist_2", "dst_y_2", , "dst_xt_p_2", "HFI_ID",  "YEAR", "Mdfr_Yr"))%>%
   dplyr::mutate(dst_y_2 = replace(dst_y_2, dst_y_2== -1111, NA))%>%
   dplyr::mutate(dist_1_2_diff=dst_y_2-dst_y_1)%>%
+  dplyr::rename(c(dist_yr_1=dst_y_1, dist_yr_2=dst_y_2, dist_ext_upper_1=dst_xt_p_1, dist_ext_upper_2=dst_xt_p_2))%>%
   as.data.frame()%>%
-  dplyr::filter(survey_year>=YEAR|survey_year>=dst_y_1)
-           as.data.frame()
+  dplyr::select(c("SS","survey_year", "cas_id", "dist_2", "dist_yr_1", "dist_ext_upper_1", "dist_2", "dist_yr_2", "dist_ext_upper_2", "dist_1_2_diff", "HFI_ID",  "YEAR", "Mdfr_Yr"))#%>%
+#   dplyr::filter(survey_year>=YEAR|survey_year>=dst_y_1)
+#            as.data.frame()
+save(ss_xy_harvest_df, file=paste0("0_data/manual/spatial/ss_xy_harvest_df_", Sys.Date(), ".rData"))
 
 nrow(as.data.frame(unique(ss_xy_harvest_df$SS)))
-           
-           
--1111
-
-
-test<-ss_xy_harvest%>%
-  dplyr::filter(!is.na(HFI_ID)&is.na(cas_id))
-
-
-test2<-ss_xy_harvest%>%
-  dplyr::filter(!is.na(HFI_ID)&!is.na(cas_id))
-
-
-test3<-ss_xy_harvest%>%
-  dplyr::filter(is.na(HFI_ID)&!is.na(cas_id))
-
-
-##########
-ABMI
-library(raster)
-abmi_tr<-abmi%>%
-  st_transform(crs = st_crs(casfri_harvest))%>%
-  dplyr::mutate(id=HFI_ID)%>%
-  dplyr::mutate(source="ABMI")%>%
-  dplyr::select(c(id, source))
-
-casfri_harvest_2<-casfri_harvest%>%
-  dplyr::mutate(id=cas_id)%>%
-  dplyr::mutate(source="ABMI")%>%
-
-
-test<-rbind(casfri_harvest, abmi_tr)
-
-abmi_trabmi_tr
-
+#3679           
 ```
 
 

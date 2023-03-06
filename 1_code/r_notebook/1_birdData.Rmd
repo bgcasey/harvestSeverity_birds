@@ -336,14 +336,14 @@ bd_wide<-spread(bd_f, SPECIES, ABUND, fill=0)%>%
   mutate(n_count=n())%>%
   dplyr::select(c(SS:TIME, survey_year, n_count, MAXDUR:YHBL))
 
-save(bd_wide, file=paste0("0_data/manual/bird/bd_wide", Sys.Date(), ".rData"))
+save(bd_wide, file=paste0("0_data/manual/bird/bd_wide_", Sys.Date(), ".rData"))
 ```
 
 ### Calculate metrics {-}
 
 #### Calculate abundance {-}
 
-Detentions summed over all repeated visits for each year
+Detections summed over all repeated visits for each year
 
 ```{r eval=FALSE}
 x<-bd_wide
@@ -411,7 +411,7 @@ hill<-exp(diversity(x[-c(1:2)], index="simpson"))/S
 
 # Combine
 bd_div<-data.frame(x[1:2], richness, menhIndx, margIndx, shan, brill, simp, pilou, hill)
-save(bd_div, file=paste0("0_data/manual/bird/bd_div", Sys.Date(), ".rData"))
+save(bd_div, file=paste0("0_data/manual/bird/bd_div_", Sys.Date(), ".rData"))
 
 ```
 
@@ -467,7 +467,7 @@ fd3<- FD::dbFD(traits, abund2)
 # bind functional diversity metrics with station data
 
 bd_funcDiv<-cbind(abund[1:2], fd3)
-save(bd_funcDiv, file=paste0("0_data/manual/bird/bd_FuncDiv", Sys.Date(), ".rData"))
+save(bd_funcDiv, file=paste0("0_data/manual/bird/bd_FuncDiv_", Sys.Date(), ".rData"))
 ```
 
 Combine all diversity metrics into single dataframe
@@ -479,7 +479,7 @@ bd_community<-bd_wide%>%
   left_join(bd_funcDiv)%>%
   dplyr::select(-c(CWM.Diet.Inv:CWM.BodyMass.Value))
 
-save(bd_community, file=paste0("0_data/manual/bird/bd_community", Sys.Date(), ".rData"))
+save(bd_community, file=paste0("0_data/manual/bird/bd_community_", Sys.Date(), ".rData"))
 ```
 
 
