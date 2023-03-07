@@ -42,14 +42,81 @@ st_write(casfri_harvest, "0_data/manual/spatial/harvest/casfri_harvest.shp")
 abmi<-st_read("../Data/ABMI/HFI_2019_v2.gdb", layer="o18_HarvestAreas_HFI_2019")
 abmi$uniqueID <- 1:nrow(abmi) 
 
+####################################################
+### Processes geometries
+
+# standardize geometries
+# check type of geometries
+as.data.frame(table(st_geometry_type(abmi)))
+#operations not supported on on mmultisurface geometries so cast as multipolygons
+abmi = st_cast(abmi, "MULTIPOLYGON")
+# check types
+as.data.frame(table(st_geometry_type(abmi)))
+
+# check geometry errors
+valid<-as.data.frame(st_is_valid(abmi, reason = TRUE))
+nonvalid<-valid%>%filter(is.na(valid))
+
+abmi_2<-st_buffer(abmi, dist=0)
+# repair geometries
+abmi_2<-st_make_valid(abmi)
+# abmi_3<-st_buffer(abmi_2, 0.0)
+#check
+valid_2<-as.data.frame(st_is_valid(abmi_2, reason = TRUE))
+nonvalid_2<-valid_2%>%filter(is.na(valid_2))
+
+## create a 30 m negative buffer
+# check units
+st_crs(abmi_2)$units
+#buffer
+abmi_buff<-st_buffer(abmi_2, dist=-30)
+# check geometries
+valid_3<-as.data.frame(st_is_valid(abmi_buff, reason = TRUE))
+nonvalid_3<-valid_3%>%filter(is.na(valid_3))
+
+as.data.frame(table(st_geometry_type(abmi_buff)))
+abmi_buff = st_cast(abmi_buff, "MULTIPOLYGON")
+
+# simplify
+abmi_buff_s<-st_simplify(abmi_buff, dTolerance = 5)
+
+plot(abmi_buff[2,]$Shape)
+plot(abmi_buff_s[2,]$Shape)
+
+
+st_write(abmi, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
+st_write(abmi_buff, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30.shp")
 st_write(abmi, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
 
+
+####################################
+surveyed<-st_join(abmi_buff, ss_xy)
+surveyed_2<-surveyed%>%
+  filter(!is.na(SS))%>%
+  dplyr::select(-c(uniqueID, survey_year))%>%
+  mutate(uniqueID=1:nrow(.))
+#4489  
+
+st_write(surveyed_2, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed.shp")
+
+surveyed_3<-st_simplify(surveyed_2, dTolerance = 5)
+st_write(surveyed_3, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp.shp")
+
+##################################
 abmi_regen<-st_read("../Data/ABMI/ABMI_HarvAreaSpecRegn2019_v1/ABMI_HarvestArea_SpectralRegeneration_2019_v1.shp")
 ```
 
 
 ### Join with point count locations {-}
 
+```{r eval=FALSE}
+casfri_harvest<-st_read("0_data/manual/spatial/harvest/casfri_harvest.shp")
+abmi_harvest<-st_read("0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
+load("0_data/manual/spatial/bird/ss_xy.rData")
+
+casfri_harvest <- st_transform(casfri_harvest, crs = 3400)
+ss_xy <- st_transform(ss_xy, crs = 3400)
+```
 
 #### Distance to edge {-}
 
@@ -80,13 +147,6 @@ save(bd_xy_edge, file ="2_pipeline/tmp/bd_xy_edge.rData")
 #### Join {-}
 
 ```{r eval=FALSE}
-casfri_harvest<-st_read("0_data/manual/spatial/harvest/casfri_harvest.shp")
-abmi_harvest<-st_read("0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
-load("0_data/manual/spatial/bird/ss_xy.rData")
-
-casfri_harvest <- st_transform(casfri_harvest, crs = 3400)
-ss_xy <- st_transform(ss_xy, crs = 3400)
-
 ss_xy_harvest<-st_join(ss_xy, casfri_harvest)%>%
   st_join(abmi_harvest)%>%
   dplyr::filter(!is.na(cas_id)|!is.na(HFI_ID))%>%
