@@ -52,43 +52,51 @@ as.data.frame(table(st_geometry_type(abmi)))
 abmi = st_cast(abmi, "MULTIPOLYGON")
 # check types
 as.data.frame(table(st_geometry_type(abmi)))
+st_write(abmi, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
+
 
 # check geometry errors
-valid<-as.data.frame(st_is_valid(abmi, reason = TRUE))
-nonvalid<-valid%>%filter(is.na(valid))
+valid<-st_is_valid(abmi, reason = TRUE)
+valid<-as.data.frame(valid)
+nonvalid<-valid%>%filter(valid!="Valid Geometry")
 
 abmi_2<-st_buffer(abmi, dist=0)
 # repair geometries
 abmi_2<-st_make_valid(abmi)
 # abmi_3<-st_buffer(abmi_2, 0.0)
 #check
-valid_2<-as.data.frame(st_is_valid(abmi_2, reason = TRUE))
-nonvalid_2<-valid_2%>%filter(is.na(valid_2))
+valid_2<-st_is_valid(abmi, reason = TRUE)
+valid_2<-as.data.frame(valid_2)
+nonvalid_2<-valid_2%>%filter(valid_2!="Valid Geometry")
 
+####################################
+# remove donut holes from polygons
+####################################
+
+library(nngeo)
+abmi_3<-st_remove_holes(abmi_2)
+valid_3<-st_is_valid(abmi_3, reason = TRUE)
+valid_3<-as.data.frame(valid_3)
+st_write(abmi_3, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_noHoles.shp")
+
+####################################
 ## create a 30 m negative buffer
+####################################
+
 # check units
-st_crs(abmi_2)$units
+st_crs(abmi_3)$units
 #buffer
-abmi_buff<-st_buffer(abmi_2, dist=-30)
+abmi_buff<-st_buffer(abmi_3, dist=-30)
 # check geometries
-valid_3<-as.data.frame(st_is_valid(abmi_buff, reason = TRUE))
-nonvalid_3<-valid_3%>%filter(is.na(valid_3))
+valid_4<-st_is_valid(abmi_buff, reason = TRUE)
+valid_4<-as.data.frame(valid_4)
 
 as.data.frame(table(st_geometry_type(abmi_buff)))
 abmi_buff = st_cast(abmi_buff, "MULTIPOLYGON")
-
-# simplify
-abmi_buff_s<-st_simplify(abmi_buff, dTolerance = 5)
-
-plot(abmi_buff[2,]$Shape)
-plot(abmi_buff_s[2,]$Shape)
-
-
-st_write(abmi, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
 st_write(abmi_buff, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30.shp")
-st_write(abmi, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
 
-
+####################################
+## Filter to surveyed polygons
 ####################################
 surveyed<-st_join(abmi_buff, ss_xy)
 surveyed_2<-surveyed%>%
@@ -102,8 +110,6 @@ st_write(surveyed_2, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_bu
 surveyed_3<-st_simplify(surveyed_2, dTolerance = 5)
 st_write(surveyed_3, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp.shp")
 
-##################################
-abmi_regen<-st_read("../Data/ABMI/ABMI_HarvAreaSpecRegn2019_v1/ABMI_HarvestArea_SpectralRegeneration_2019_v1.shp")
 ```
 
 
@@ -111,7 +117,7 @@ abmi_regen<-st_read("../Data/ABMI/ABMI_HarvAreaSpecRegn2019_v1/ABMI_HarvestArea_
 
 ```{r eval=FALSE}
 casfri_harvest<-st_read("0_data/manual/spatial/harvest/casfri_harvest.shp")
-abmi_harvest<-st_read("0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019.shp")
+abmi_harvest<-st_read("0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_noHoles.shp")
 load("0_data/manual/spatial/bird/ss_xy.rData")
 
 casfri_harvest <- st_transform(casfri_harvest, crs = 3400)
@@ -120,7 +126,7 @@ ss_xy <- st_transform(ss_xy, crs = 3400)
 
 #### Distance to edge {-}
 
-Calculate distance of pointcoints to nearest harvest edge.
+Calculate distance of point-coints to nearest harvest edge.
 
 ```{r eval=FALSE}
 # get the boundary of shape files
@@ -149,8 +155,7 @@ save(bd_xy_edge, file ="2_pipeline/tmp/bd_xy_edge.rData")
 ```{r eval=FALSE}
 ss_xy_harvest<-st_join(ss_xy, casfri_harvest)%>%
   st_join(abmi_harvest)%>%
-  dplyr::filter(!is.na(cas_id)|!is.na(HFI_ID))%>%
-  dplyr::mutate(dist_to_edge=st_distance(ss_xy, HFI_ID))
+  dplyr::filter(!is.na(cas_id)|!is.na(HFI_ID))
 
 ss_xy_harvest_df<-ss_xy_harvest%>%
   dplyr::select(c("SS","survey_year", "cas_id", "dist_1", "dst_y_1", "dst_xt_p_1", "dist_2", "dst_y_2", , "dst_xt_p_2", "HFI_ID",  "YEAR", "Mdfr_Yr"))%>%
@@ -166,12 +171,8 @@ ss_xy_harvest_df<-ss_xy_harvest%>%
 save(ss_xy_harvest_df, file=paste0("0_data/manual/spatial/ss_xy_harvest_df_", Sys.Date(), ".rData"))
 
 nrow(as.data.frame(unique(ss_xy_harvest_df$SS)))
-#3679           
+#3752         
 
-# test<-ss_xy_harvest_df%>%
-#   filter(!is.na(HFI_ID))
-# nrow(as.data.frame(unique(test$HFI_ID)))
-# #3679           
 ```
 
 
