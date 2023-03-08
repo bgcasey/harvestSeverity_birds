@@ -176,3 +176,17 @@ nrow(as.data.frame(unique(ss_xy_harvest_df$SS)))
 ```
 
 
+### ABMI regen metrics {-}
+
+```{r eval=FALSE}
+abmi_regen<-st_read("../Data/ABMI/ABMI_HarvAreaSpecRegn2019_v1/ABMI_HarvestArea_SpectralRegeneration_2019_v1.shp")
+
+load("0_data/manual/spatial/bird/ss_xy.rData")
+ss_xy <- st_transform(ss_xy, crs = 3400)
+
+ss_xy_abmiRegen_df<-as.data.frame(st_join(ss_xy, abmi_regen))%>%
+  filter(!is.na(HFI_ID))
+
+save(ss_xy_abmiRegen_df, file="2_pipeline/tmp/ss_xy_abmiRegen_df.rData")
+```
+
