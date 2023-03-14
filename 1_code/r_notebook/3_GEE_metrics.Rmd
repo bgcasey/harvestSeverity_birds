@@ -8,6 +8,7 @@ setwd(rprojroot::find_rstudio_root_file())
 ```{r eval=FALSE}
 library(dplyr)
 library(readr)
+library(data.table)
 ```
 
 ## GEE scripts {.unnumbered}
@@ -75,7 +76,8 @@ save(gee_metrics_3, file="2_pipeline/tmp/gee_metrics_3.rData")
 filepath<-"0_data/manual/gee_tables/nbr/"
 
 #--- Get list of names for original metric GEE output files
-origFiles <- list.files(path=paste0(filepath, 'raw'), pattern="*.csv$", full.names=TRUE, recursive=FALSE)
+origFiles <- list.files(path=paste0(filepath, "unprocessed/"), pattern="*.csv$", full.names=TRUE, recursive=FALSE)
+
 ```
 
 
@@ -110,20 +112,20 @@ for (i in 1:length(origFiles)) {
     fullMetricCols <- c(fullMetricCols,meanName,stdevName)
   }
   
-  
+
   #--- Reformat metric data to create new table
   #--------------------------------------------
   
   #--- Initiatlize a dataframe, with OBJECTIDs in the first column
   outMetTable <- data.frame("OBJECTID"=OIDs)
-  
+
   #--- For each item in metricList, do the following:
   for (j in 1:length(metricList)){
     
     #--- Subset thisDat, selecting rows where the current metric in the list
     #---   is in the METRIC column, but output only the METRIC_MEAN and METRIC_STDEV columns
     colData <- subset(thisDat, METRIC == metricList[j], select = c("OBJECTID","METRIC_MEAN","METRIC_STDEV"))
-    colData <- colData[order(colData["OBJECTID"]),]
+    colData <- colData[order(colData$OBJECTID),]
     outData <- subset(colData, select = c("METRIC_MEAN","METRIC_STDEV"))
     
     #--- Extract the corresponding, appropriate column names for metric [j] from fullMetricCols
@@ -133,7 +135,7 @@ for (i in 1:length(origFiles)) {
     #--- Add the result to the outMetTable dataframe
     outMetTable <- cbind(outMetTable, outData)
   }
-  
+
   #--- Reformat flag data, and combine with metric data
   #----------------------------------------------------
   
@@ -141,12 +143,12 @@ for (i in 1:length(origFiles)) {
   flagData <- data.frame("TOT_PIXELS"=0,"PERC_UNMSKD"=0,"UNMSKD_PIXELS"=0,"MAX_CONNCTDPIX"=0,"PERC_NOHARVEST"=0,
                          "PERC_MULTIDISTB"=0,"PERC_OUTOFRANGE"=0,"PERC_NOREGEN"=0,"PERC_NO5REGEN"=0,
                          "PERC_NO10REGEN"=0,"PERC_NO15REGEN"=0,"PERC_NO20REGEN"=0)
-  
+ 
   #--- List of relevant columns
   flagCols <- c("TOT_PIXELS","PERC_UNMSKD","UNMSKD_PIXELS","MAX_CONNCTDPIX","PERC_NOHARVEST","PERC_MULTIDISTB",
                 "PERC_OUTOFRANGE","PERC_NOREGEN","PERC_NO5REGEN","PERC_NO10REGEN",
                 "PERC_NO15REGEN","PERC_NO20REGEN")
-  
+
   #--- Extract "TOT_PIXELS", "UNMSKD_PIXELS", & other Flag columns for each OBJECTID
   for (k in 1:length(OIDs)){
     
@@ -157,18 +159,19 @@ for (i in 1:length(origFiles)) {
     flagData <- rbind(flagData,objFlags)
     
   }
-  
+ 
   #--- Remove first row (full of zeros)
   flagData <- flagData[-1,]
-  
+
   #--- Add flag columns to metric information
   outMetTable <- cbind(outMetTable, flagData)
-  
+
   #-- add survey info to metric table
   outMetTable_fin <-left_join(outMetTable,surv)
-  #outMetTable_fin <- outMetTable_fin[, c(1, 46:48, 2:45)]
-  outMetTable_fin <- outMetTable_fin[, c(1, 48:50, 2:47)]
-  
+  # outMetTable_fin <- outMetTable_fin[, c(1, 48:50, 2:47)]
+  outMetTable_fin <- outMetTable_fin%>%
+    dplyr::select(OBJECTID, HFI_ID, uniquID, YEAR, preDistMean_mean:PERC_NO20REGEN)
+
   
   
   #--- Write to output file
@@ -176,23 +179,23 @@ for (i in 1:length(origFiles)) {
   
   #--- Create output file name
   fullName <- substr(origFiles[i], 1, nchar(origFiles[i])-4)
-  fileName <- substr(fullName, nchar(filepath)+4, nchar(fullName))
-  extension <- substr(origFiles[i], nchar(origFiles[i])-3, nchar(origFiles[i]))
-  outputName <- paste0(filepath,'reformatted',fileName,"_RFMTTD",extension)
-  #outputName <- paste0('../LandsatNBR/output/tables/reformatted/',fileName,"_RFMTTD",extension)
+  fileName <- substr(fullName, nchar(paste0(filepath, "unprocessed/")), nchar(fullName))
   
+  extension <- substr(origFiles[i], nchar(origFiles[i])-3, nchar(origFiles[i]))
+  outputName <- paste0(filepath,'reformatted/',fileName,"_RFMTTD",extension)
+  #outputName <- paste0('../LandsatNBR/output/tables/reformatted/',fileName,"_RFMTTD",extension)
+
   #--- Write to file
   fwrite(outMetTable_fin, file = outputName)
 
   #--- Output message to console
   print(paste("Done."))
-  
 }
+
 ```
 
 
 #### Compile reformatted files into one {-}
-
 
 ```{r compile_reformatted_files, eval=FALSE}
 
@@ -209,15 +212,15 @@ thisFile <- fread(rfmtFiles[m], data.table = FALSE)
 }
 
 #--- Create new data frame for further additions, and modifications
-fullData <- rfmtDat[order(rfmtDat$OBJECTID),] #--- n = 172606 obs. of 45 variables
-
+fullData <- rfmtDat[order(rfmtDat$OBJECTID),]%>% 
+          dplyr::select(-uniquID)
 str(fullData)
 
-save(fullData, file="2_pipeline/store/fulDataNBR_in.rData")
+save(fullData, file="0_data/manual/gee_tables/nbr/fulDataNBR.rData")
 ```
 
 ```{r fulDataNBR_in_table, echo=FALSE, results="asis"}
-load("2_pipeline/store/fulDataNBR_in.rData")
+load("2_pipeline/store/fulDataNBR.rData")
 
 knitr::kable(head(fullData)) %>%
   kable_styling(font_size = 10, bootstrap_options= c("striped", "hover", "condensed" ), full_width= F, position="center") %>%
@@ -615,8 +618,8 @@ confTable$sumConf <- apply(confTable[,c("sizeConf", "availPixConf", "contgPixCon
                            function(x) sum(x))
 
 #--- Reorder fullData and confTable to ensure they're in the same order
-fullData <- fullData[order(fullData["OBJECTID"]),]
-confTable <- confTable[order(confTable["OBJECTID"]),]
+fullData <- fullData[order(fullData$OBJECTID),]
+confTable <- confTable[order(confTable$OBJECTID),]
 
 # #--- Plot to make sure they all line up
 # plot(fullData$OBJECTID, confTable$OBJECTID)
@@ -637,22 +640,11 @@ str(finalFullTable) #--- 172606 obs. of 55 variables
 #--- Output full data set to CSV
 #--------------------------------------------------------------------------------------------
 
-save(finalFullTable, file="2_pipeline/store/finalFullTable_in.rData")
+save(finalFullTable, file="0_data/manual/gee_tables/nbr/finalFullTable.rData")
 #--- Write to csv
-fwrite(finalFullTable, file=paste0(filepath,"/final/NBR_allMets_finalFullTable.csv"))
+fwrite(finalFullTable, file=paste0(filepath,"NBR_allMets_finalFullTable.csv"))
 
 ```
-
-
-```{r echo=FALSE, results="asis"}
-load("2_pipeline/store/finalFullTable_in.rData")
-
-knitr::kable(head(finalFullTable)) %>%
-  kable_styling(font_size = 10, bootstrap_options= c("striped", "hover", "condensed" ), full_width= F, position="center") %>%
-  column_spec(1, width= "20em")%>%
-  scroll_box(width = "100%", height = "400px")
-```
-
 
 
 #### Remove inappropriate, low-confidence, and/or irrelevant records {-}
@@ -661,35 +653,35 @@ knitr::kable(head(finalFullTable)) %>%
 
 ##--- Create new data frame for cleaning
 cleanData <- finalFullTable
-dim(cleanData) #15815 
+dim(cleanData) #4793
 
 #--- Remove records based on NA values, numbers of pixels, and % of HA unmasked::
 #--------------------------------------------------------------------------------
 
-#--- Remove rows with NA values
-length(which(is.na(cleanData$preDistMean_mean))) #--- n = 7468 (rows with NA values)
-cleanData <- cleanData[which(!is.na(cleanData$preDistMean_mean)),]
-dim(cleanData) #--- n = 8351 obs.
-
-cleanData_na<-cleanData
-
-save(cleanData_na, file="2_pipeline/store/NBR_clean_NA_in")
+# #--- Remove rows with NA values
+# length(which(is.na(cleanData$preDistMean_mean))) #--- n = 7468 (rows with NA values)
+# cleanData <- cleanData[which(!is.na(cleanData$preDistMean_mean)),]
+# dim(cleanData) #--- n = 4571  obs.
+# 
+# cleanData_na<-cleanData
+# 
+# save(cleanData_na, file="2_pipeline/store/NBR_clean_NA_in")
 
 #--- Remove rows with < 9 total pixels
 length(which(cleanData$UNMSKD_PIXELS < 9)) #--- n = 37804 (rows total available pixels < 9)
 cleanData <- cleanData[which(cleanData$UNMSKD_PIXELS >= 9),]
-dim(cleanData) #--- n = 4733 obs.
+dim(cleanData) #--- n = 4168 obs.
 
 #--- Examine how many rows with no. connected pix < 9 and < 11
 length(which(cleanData$MAX_CONNCTDPIX < 9)) #--- n = 3001
 length(which(cleanData$MAX_CONNCTDPIX < 11)) #--- n = 4364
 cleanData <- cleanData[which(cleanData$MAX_CONNCTDPIX >= 11),]
-dim(cleanData)
+dim(cleanData) #3535
 
 #--- Remove rows/data records wherein >50% of pixels are flagged and masked out
 length(which(cleanData$PERC_UNMSKD < 50)) #--- n = 15792
 cleanData <- cleanData[which(cleanData$PERC_UNMSKD >= 50),]
-dim(cleanData) #--- n = 1274 obs.
+dim(cleanData) #--- n = 2280 obs.
 
 #--- Remove values for 10-yr, 15-yr, and 20-yr regen where not appropriate::
 #---------------------------------------------------------------------------
@@ -718,7 +710,6 @@ length(which(cleanData$PERC_NO5REGEN > 50.0)) #--- n = 0
 no5yrRows <- which(cleanData$PERC_NO5REGEN > 50.0)
 cleanData[no5yrRows, c("regen5yr_mean","regen5yr_stdev")] <- NA
 
-
 #--- Remove records based on low confidence scores::
 #---------------------------------------------------
 
@@ -737,17 +728,17 @@ dim(cleanData[which(cleanData$sumConf <= 25),]) #n = 876
 dim(cleanData[which(cleanData$sumConf <= 30),]) #n = 4352
 
 hist(cleanData$sumConf)
-meanConfScr <- mean(cleanData$sumConf) #mean = 39.26253
+meanConfScr <- mean(cleanData$sumConf) #mean = 32.88713
 meanConfScr
-sdConfScr <- sd(cleanData$sumConf)   #sd = 5.054748
+sdConfScr <- sd(cleanData$sumConf)   #sd = 8.636413
 sdConfScr
 
 sd2below <- meanConfScr - (2 * sdConfScr)
-sd2below #2 stdev below mean = 29.15304
+sd2below #2 stdev below mean = 15.6143
 sd3below <- meanConfScr - (3 * sdConfScr)
-sd3below #3 stdev below mean = 24.09829
+sd3below #3 stdev below mean = 6.9
 
-dim(cleanData[which(cleanData$sumConf <= 24 |
+dim(cleanData[which(cleanData$sumConf <= 6.9 |
                     cleanData$yodConf < 4),]) #n = 6121
 
 #--- Remove rows with < 4 as a yodConf (year of harvest confidence score)
@@ -759,8 +750,8 @@ head(cleanData[order(cleanData$sumConf),c(1,grep("Conf",colnames(cleanData)))], 
 hist(cleanData$sumConf)
 
 #--- Remove rows with < 24 as a total confidence score
-cleanData <- cleanData[which(cleanData$sumConf >= 24),]
-dim(cleanData) #n = 1160
+cleanData <- cleanData[which(cleanData$sumConf >= 6.9),]
+dim(cleanData) #n = 1841
 
 str(cleanData)
 
@@ -768,15 +759,15 @@ str(cleanData)
 #Combine filtered and unfiltered data add a column for data that categroizes data by data I'm confident in and data that I'm not confident in
 #-------------------------
 
-t<-anti_join(cleanData_na, cleanData, by = c("OBJECTID", "SS", "cas_id", "srvy_yr"))
-dim(t) #7191
+t<-anti_join(cleanData_na, cleanData,  c("OBJECTID", "HFI_ID", "YEAR")
+dim(t) #2730
 
 t$highConf="n"
 cleanData$highConf="y"
 
-nbr_cleanData_in<-rbind(cleanData,t)
+nbr_cleanData<-rbind(cleanData,t)
 
-save(nbr_cleanData_in, file="2_pipeline/store/nbr_cleanData_in.rDATA")
+save(nbr_cleanData_in, file="2_pipeline/store/nbr_cleanData.rDATA")
 #--------------------------------------------------------------------------------------------
 #--- Output clean data set to CSV
 #--------------------------------------------------------------------------------------------
@@ -784,16 +775,5 @@ save(nbr_cleanData_in, file="2_pipeline/store/nbr_cleanData_in.rDATA")
 #--- Write to csv
 fwrite(nbr_cleanData_in, file=paste0(filepath,"final/nbr_cleanData_in.csv"))
 
-```
-
-
-The final table has a column that categorizes data by data I'm confident in and data that I'm not confident in.
-
-```{r showNBRtable, echo=FALSE, results="asis"}
-load("2_pipeline/store/nbr_cleanData_in.rDATA")
-knitr::kable(head(nbr_cleanData_in)) %>%
-  kable_styling(font_size = 12, bootstrap_options= c("striped", "hover", "condensed" ), full_width= F, position="center") %>%
-  column_spec(1, width= "20em")%>%
-  scroll_box(width = "100%", height = "400px")
 ```
 

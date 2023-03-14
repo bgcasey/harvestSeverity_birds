@@ -1,3 +1,6 @@
+/**** Start of imports. If edited, may not auto-convert in the playground. ****/
+var table = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_2");
+/***** End of imports. If edited, may not auto-convert in the playground. *****/
 //###########################################################################################################
 //## This script was adapted from the following:
 //##
@@ -23,38 +26,54 @@
 //########################################################################################################
 
 ///////////////////////
+///// Point count locations
+///////////////////////
+var ss_xy= ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/ss_xy");
+
+///////////////////////
 /////Harvest polygons
 ///////////////////////
 
-// define interior buffer
-var buf=-30
+// // define interior buffer
+// var buf=-30
 
-var fullHA = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/ABMI_HarvestAreas_HFI_2019");
+var fullHA = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_2");
+      // .filter(ee.Filter.bounds(ss_xy));
 
-print(fullHA.limit(10))
-// create an interior buffer in harvest polygons
-var fullHA_buf= fullHA.map(function(pt){
-    return pt.buffer(buf);
-  });
-  
-// select a subset of polygons to try code  
-var subset = 5
+print('fullHA_size', fullHA.size());
+
+// var HA_s = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/HA_surveyed");
+// print('HA_s', HA_s.limit(10));
+
+// Export.table.toAsset(HA_surveyed, "HA_surveyed_export")
+
+//// create an interior buffer in harvest polygons
+// var fullHA_buf= fullHA.map(function(pt){
+//     return pt.buffer(buf);
+//   });
+
+// // select a subset of polygons to try code  
+// var subset = 5
 
 // var filterSpecHAs = ee.Filter.lte('uniquID', subset);
 
 // // //== OR ::
-var filterSpecHAs = ee.Filter.and(ee.Filter.gt('uniquID',0),ee.Filter.lte('uniquID',10000)); 
+var filterSpecHAs = ee.Filter.and(ee.Filter.gt('uniquID',4800),ee.Filter.lte('uniquID',5000)); 
+
 
 //== Apply filter to select portion of polygons 
-var HA = fullHA_buf.filter(filterSpecHAs);
-// print("HA", HA.limit(20))
+var HA = fullHA.filter(filterSpecHAs);
+print('HA_size', HA.size());
+
+
+// print("HA", HA.size())
 // // For final analysis use:
-// var HA = fullHA_buf;
+// var HA = fullHA;
 
 
-///////////////////////
-/////Study area
-///////////////////////
+// ///////////////////////
+// /////Study area
+// ///////////////////////
 
 // Create geometry object, covering Alberta (for filtering Landsat data)
 var geometry = /* color: #ffc82d */ee.Geometry.Polygon(
@@ -95,9 +114,9 @@ var mmu        = 15;       // minimum mapping unit for disturbance patches - uni
 // define function to calculate a spectral index to segment with LT
 var segIndex = function(img) {
     var index = img.normalizedDifference(['B4', 'B7'])                      // calculate normalized difference of band 4 and band 7 (B4-B7)/(B4+B7)
-                   .multiply(1000)                                          // ...scale results by 1000 so we can convert to int and retain some precision
-                   .select([0], ['NBR'])                                    // ...name the band
-                   .set('system:time_start', img.get('system:time_start')); // ...set the output system:time_start metadata to the input image time_start otherwise it is null
+                  .multiply(1000)                                          // ...scale results by 1000 so we can convert to int and retain some precision
+                  .select([0], ['NBR'])                                    // ...name the band
+                  .set('system:time_start', img.get('system:time_start')); // ...set the output system:time_start metadata to the input image time_start otherwise it is null
     return index ;
 };
 
@@ -135,9 +154,9 @@ var harmonizationRoy = function(oli) {
   var slopes = ee.Image.constant([0.9785, 0.9542, 0.9825, 1.0073, 1.0171, 0.9949]);        // create an image of slopes per band for L8 TO L7 regression line - David Roy
   var itcp = ee.Image.constant([-0.0095, -0.0016, -0.0022, -0.0021, -0.0030, 0.0029]);     // create an image of y-intercepts per band for L8 TO L7 regression line - David Roy
   var y = oli.select(['B2','B3','B4','B5','B6','B7'],['B1', 'B2', 'B3', 'B4', 'B5', 'B7']) // select OLI bands 2-7 and rename them to match L7 band names
-             .resample('bicubic')                                                          // ...resample the L8 bands using bicubic
-             .subtract(itcp.multiply(10000)).divide(slopes)                                // ...multiply the y-intercept bands by 10000 to match the scale of the L7 bands then apply the line equation - subtract the intercept and divide by the slope
-             .set('system:time_start', oli.get('system:time_start'));                      // ...set the output system:time_start metadata to the input image time_start otherwise it is null
+            .resample('bicubic')                                                          // ...resample the L8 bands using bicubic
+            .subtract(itcp.multiply(10000)).divide(slopes)                                // ...multiply the y-intercept bands by 10000 to match the scale of the L7 bands then apply the line equation - subtract the intercept and divide by the slope
+            .set('system:time_start', oli.get('system:time_start'));                      // ...set the output system:time_start metadata to the input image time_start otherwise it is null
   return y.toShort();                                                                       // return the image as short to match the type of the other data
 };
 
@@ -157,9 +176,9 @@ var getSRcollection = function(year, startDay, endDay, sensor, aoi) {
   
   // get a landsat collection for given year, day range, and sensor
   var srCollection = ee.ImageCollection('LANDSAT/'+ sensor + '/C01/T1_SR') // get surface reflectance images
-                       .filterBounds(aoi)                                  // ...filter them by intersection with AOI
-                       .filterDate(startDate, endDate); //*** ADDED BY JH (to deal with bad date error) ***
-                       //.filterDate(year+'-'+startDay, year+'-'+endDay);    // ...filter them by year and day range
+                      .filterBounds(aoi)                                  // ...filter them by intersection with AOI
+                      .filterDate(startDate, endDate); //*** ADDED BY JH (to deal with bad date error) ***
+                      //.filterDate(year+'-'+startDay, year+'-'+endDay);    // ...filter them by year and day range
   
   // apply the harmonization function to LC08 (if LC08), subset bands, unmask, and resample           
   srCollection = srCollection.map(function(img) {
@@ -168,17 +187,17 @@ var getSRcollection = function(year, startDay, endDay, sensor, aoi) {
         sensor == 'LC08',                                                  // condition - if image is OLI
         harmonizationRoy(img.unmask()),                                    // true - then apply the L8 TO L7 alignment function after unmasking pixels that were previosuly masked (why/when are pixels masked)
         img.select(['B1', 'B2', 'B3', 'B4', 'B5', 'B7'])                   // false - else select out the reflectance bands from the non-OLI image
-           .unmask()                                                       // ...unmask any previously masked pixels 
-           .resample('bicubic')                                            // ...resample by bicubic 
-           .set('system:time_start', img.get('system:time_start'))         // ...set the output system:time_start metadata to the input image time_start otherwise it is null
+          .unmask()                                                       // ...unmask any previously masked pixels 
+          .resample('bicubic')                                            // ...resample by bicubic 
+          .set('system:time_start', img.get('system:time_start'))         // ...set the output system:time_start metadata to the input image time_start otherwise it is null
       )
     );
     
     // make a cloud, cloud shadow, and snow mask from fmask band
     var qa = img.select('pixel_qa');                                       // select out the fmask band
     var mask = qa.bitwiseAnd(8).eq(0).and(                                 // include shadow
-               qa.bitwiseAnd(16).eq(0)).and(                               // include snow
-               qa.bitwiseAnd(32).eq(0));                                   // include clouds
+              qa.bitwiseAnd(16).eq(0)).and(                               // include snow
+              qa.bitwiseAnd(32).eq(0));                                   // include clouds
     
     // apply the mask to the image and return it
     return dat.mask(mask); //apply the mask - 0's in mask will be excluded from computation and set to opacity=0 in display
@@ -265,7 +284,7 @@ var calcSeasonalMedian = function(imgCollection, yr){
 
 //== Create sequential list of years 
 var ltYrs = ee.List.sequence(startYear, endYear);
-print("ltYrs", ltYrs)
+// print("ltYrs", ltYrs)
 
 //== For each year in sequence, create a combined Landsat surface reflectance image collection,
 //== and apply seasonal median function to create a single composite
@@ -305,8 +324,8 @@ var getLTvertStack = function(LTresult) {
   }
   
   var zeros = ee.Image(ee.Array([emptyArray,        // make an image to fill holes in result 'LandTrendr' array where vertices found is not equal to maxSegments parameter plus 1
-                                 emptyArray,
-                                 emptyArray]));
+                                emptyArray,
+                                emptyArray]));
   
   var lbls = [['yrs_','src_','fit_'], vertLabels,]; // labels for 2 dimensions of the array that will be cast to each other in the final step of creating the vertice output 
 
@@ -419,7 +438,7 @@ var annualSRcollection = buildMosaicCollection(startYear, endYear, startDay, end
 
 //== Build annual seasonal median composite
 var medianSeries = ee.ImageCollection(buildAnnualMedian);
-print(medianSeries, "medianSeries")
+// print(medianSeries, "medianSeries")
 
 //== Apply NBRindex function to calculate an NBR composite time series
 var NBRMedseries = medianSeries.map(NBRindex);
@@ -428,8 +447,8 @@ var NBRMedseries = medianSeries.map(NBRindex);
 var indexNameFTV = ee.Image(NBRMedseries.first()).bandNames().getInfo()[0]+'_FTV'; // create a name for the to-be-fitted band - get the name of the segmentation index and append "_FTV"
 var NBRMedseriesFTV = NBRMedseries.map(function(img) {                                // start anonymous function to add the band
   return img.addBands(img.select([0],[indexNameFTV]))                                        // duplicate the segmentation index as a second band using the name that was just created
-                         //.multiply(distDir))                                                // ...flip the values around so that it is back to its original orientation
-                         .set('system:time_start', img.get('system:time_start'));           // ...set the output system:time_start metadata to the input image time_start otherwise it is null                                 
+                        //.multiply(distDir))                                                // ...flip the values around so that it is back to its original orientation
+                        .set('system:time_start', img.get('system:time_start'));           // ...set the output system:time_start metadata to the input image time_start otherwise it is null                                 
 });
 
 // //== PRINT OUTPUTS
@@ -521,7 +540,7 @@ var fitCollection = ee.ImageCollection(ltFitStack.bandNames().map(function(band)
 }));
 
 // // //== PRINT OUTPUTS
-// // print('fitCollection', fitCollection);
+// print('fitCollection', fitCollection);
 
 
 //-----------------------------------------
@@ -570,7 +589,7 @@ var postDistColl = fitCollection.map(function(image) {
   var yrImg = ee.Image.constant(currYr);
   var postDistDates = yrImg.gte(yodImage);
   var yearBand = ee.Image.constant(currYr).rename('Year').toFloat();
-   return image.addBands(yearBand).updateMask(postDistDates);
+  return image.addBands(yearBand).updateMask(postDistDates);
 });
 
 // //== PRINT OUTPUTS
@@ -988,7 +1007,7 @@ var endTSval = ltNBRFitted.select([lastBand]);
 
 //== Calculate total percent regeneration (regen / disturbance)
 var totPercRegen = endTSval.subtract(eocValImg).divide(totDistbVal)
-                           .multiply(100).rename('percTotRegen');
+                          .multiply(100).rename('percTotRegen');
 
 // //== PRINT OUTPUT
 // print('totPercRegen',totPercRegen);
@@ -1004,7 +1023,7 @@ var img30perc = totDistbVal.multiply(0.3).add(eocValImg);
 //== Map function over postEocColl to extract years to 30% spectrally regenerated
 var y2r30Coll = postEocColl.map(function(image){
   var currYr = image.select('Year');
-   var at30regen = ee.Image(0)
+  var at30regen = ee.Image(0)
     .where(image.select('NBR_fitted').gte(img30perc), currYr)
     .rename('y2r30');
   return at30regen.set('year', image.get('year')).updateMask(at30regen.gt(0));
@@ -1181,7 +1200,7 @@ var maskFlagsImgReordered = maskFlagsImg.select(['No20yrRegen','No15yrRegen', 'N
 //== Reorder and select key flag mask bands; exclude those flags where metric is not calculated because period of 
 //==  regeneration is not long enough
 var maskKeyFlagsImgReordered = maskFlagsImg.select(['NoRegenDetected', 
-                                                 'YODOutOfRange', 'MultiDistb', 'NoHarvest']);
+                                                'YODOutOfRange', 'MultiDistb', 'NoHarvest']);
 var keyFlagExists = maskKeyFlagsImgReordered.reduce(ee.Reducer.anyNonZero());
 var zeroKeyFlagExists = ee.Image.constant(1).updateMask(keyFlagExists.not());
 
@@ -1193,7 +1212,7 @@ var zeroKeyFlagExists = ee.Image.constant(1).updateMask(keyFlagExists.not());
 //-------------------------------------------------------------------
 // ------- Import Feature Collection of Harvest Area Polygons -------
  
-//print(HA)
+//// print(HA)
 
 // ***NEW for 2018 HAs (2020-06-17) * Seems to Work *
 //== Function to add "OBJECTID" field (which doesn't exist in this fusion table, yet)
@@ -1202,8 +1221,8 @@ HA = HA.map(function(feat){
 });
 
 //== PRINT OUTPUTS
-print('HA polygon (first)', HA.first());
-print('HA polygon', HA)
+// print('HA polygon (first)', HA.first());
+// print('HA polygon', HA)
 
 //== Example HA polygon object, for visualization
 // var featID = 206906;
@@ -1241,7 +1260,7 @@ var sumAllPix = constImg.reduceRegions({
   reducer: ee.Reducer.sum(),
   crs: origProj,
   scale: 30,
-  tileScale: 16
+  tileScale: 8
 });
 // print('sumAllPix', sumAllPix);
 
@@ -1252,7 +1271,7 @@ var sumUnMskPix = constImgMskd.reduceRegions({
   reducer: ee.Reducer.sum(),
   crs: origProj,
   scale: 30,
-  tileScale: 16
+  tileScale: 8
 });
 // print('sumUnMskPix', sumUnMskPix);
 
@@ -1261,7 +1280,7 @@ var sumZeroFlags = zeroKeyFlagExists.reduceRegions({
   reducer: ee.Reducer.sum(),
   crs: origProj,
   scale: 30,
-  tileScale: 16
+  tileScale: 8
 });
 // print('sumZeroFlags', sumZeroFlags);
 
@@ -1276,7 +1295,7 @@ var AltCustmHistFlags = maskFlagsImgReordered.reduceRegions({
   }),
   crs: origProj,
   scale: 30,
-  tileScale: 16
+  tileScale: 8
 });
 // print('AltCustmHistFlags',AltCustmHistFlags);
 
@@ -1299,7 +1318,7 @@ var maxContigPix = contigPixImg.reduceRegions({
   reducer: ee.Reducer.max(),
   crs: origProj,
   scale: 30,
-  tileScale: 16
+  tileScale: 8
 });
 // print('maxContigPix', maxContigPix);
 // print('maxContigPix.limit(4)', maxContigPix.limit(4));
@@ -1334,7 +1353,7 @@ var outputColl = ee.ImageCollection.fromImages([
                                                 y2r80img.rename('yrTo80').set('metricLayer','yrTo80'),
                                                 y2r100img.rename('yrTo100').set('metricLayer','yrTo100')
                                               ]); 
-//print('outputColl', outputColl);
+//// print('outputColl', outputColl);
 
 //== Apply masks to keep only those pixels that are relevant/appropriate for extracting
 //==  post-harvest regeneration info (harvest/disturbance occurs, occurs only once, is within appropriate
@@ -1371,7 +1390,7 @@ var extractZonalStats = outputCollmakd.map(function(img){
     reducer: twoReducers,
     crs: origProj,
     scale: 30,
-    tileScale: 16
+    tileScale: 8
   });
   
   return haStats.map(function(poly){
@@ -1383,7 +1402,7 @@ var extractZonalStats = outputCollmakd.map(function(img){
   });
 
 });
-print('extractZonalStats',extractZonalStats);
+// print('extractZonalStats',extractZonalStats);
 
 
 //== Flatten collection of collections

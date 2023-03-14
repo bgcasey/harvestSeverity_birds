@@ -150,6 +150,16 @@ bd_xy_edge<-bd_xy_edge%>%
 save(bd_xy_edge, file ="2_pipeline/tmp/bd_xy_edge.rData")
 ```
 
+#### Perimeter area ratio {-}
+
+Calculate the perimeter area ratio () of harvest polygons.
+```{r eval=FALSE}
+# abmi_harvest<-abmi_harvest%>%
+abmi_harvest_test<-abmi_harvest%>%
+  mutate(perimeter=st_length(st_cast(geometry, "MULTILINESTRING")))%>%
+  mutate(pa_ratio=perimeter/area)       
+```
+
 #### Join {-}
 
 ```{r eval=FALSE}

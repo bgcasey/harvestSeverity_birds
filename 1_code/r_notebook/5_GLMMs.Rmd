@@ -18,7 +18,7 @@ pre[class] {
 ```
 
 
-```{r}
+```{r eval=FALSE}
 library(dplyr)
 library(lme4)
 #library(piecewiseSEM) # for psudo R2
@@ -30,34 +30,20 @@ library(purrr)
 library(DHARMa)
 library(htmltools)
 library(jtools)
+library(car)
 
 
-load("2_pipeline/store/d.rData")
+load("0_data/manual/for_models/bd_cov_processed_2023-03-09.rData")
 ```
 
 
 ## Richness {-}
 
-```{r}
-d<-d%>%
-  dplyr::select(-c(CAWA, CAWA_off, DATE, TIME))%>%
-  filter(richness<40)%>%
+Prepare data. 
+
+```{r eval=FALSE}
+d1<-d%>%dplyr::select(-c(menhIndx:RaoQ, ss_dst_timelag))%>%
   na.omit()
-# 
-# %>%
-#   distinct()
-
-
-sc_2 <- attr(d$dNBR_perc, 'scaled:scale')
-ce_2 <- attr(d$dNBR_perc, 'scaled:center')
-
-d1<-d%>%
-  mutate(dNBR_perc_us=dNBR_perc * sc_2 + ce_2)%>%
-  filter(dNBR_perc_us<1)
-
-
-
-
 ```
 
 
@@ -65,8 +51,6 @@ d1<-d%>%
 
 ### Distribution of response
 ```{r eval=FALSE}
-
-
 plotdist(d$richness, discrete=TRUE, histo = TRUE, demp = TRUE)
 descdist(d$richness, discrete=TRUE, boot = 1000)
 
@@ -104,7 +88,6 @@ distance to edge of polygon
 
 ```{r eval=FALSE}
 
-
 Richness_m0<-lme4::glmer(richness ~ 1, data=d,  family = poisson, na.action = na.exclude)
 
 Richness_m1<-lme4::glmer(richness ~ 1 + (1|SS), data=d,  family = poisson, na.action = na.exclude)
@@ -127,7 +110,11 @@ Richness_m9<-lme4::glmer(richness ~ 1 + (1|SS) + (1|cas_id), data=d,  family = p
 
 Richness_m10<-lme4::glmer(richness ~ 1 + (1|survey_year/cas_id), data=d,  family = poisson, na.action = na.exclude)
 
+Richness_m11<-lme4::glmer(richness ~ 1 + (1|cas_id/survey_year) + (1|SS), data=d,  family = poisson, na.action = na.exclude)
 
+Richness_m12<-lme4::glmer(richness ~ 1 + (1|SS/survey_year) + (1|cas_id), data=d,  family = poisson, na.action = na.exclude)
+
+Richness_m13<-lme4::glmer(richness ~ 1 + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude)
 # Compare models
 
 ## make a list of models
@@ -155,14 +142,14 @@ rich_nullMods_r_sum<-sel.table
 
 save(rich_nullMods_r_sum, file="2_pipeline/store/models/rich_nullMods_sum_r.rData")
 
-anova(Richness_m8, Richness_m6)
+anova(Richness_m13, Richness_m11)
 
 
-Richness_null_ms <- model.sel(Richness_m6, rank="AIC", extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
+Richness_null_ms <- model.sel(Richness_m13, rank="AIC", extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
 
 save(Richness_null_ms, file="2_pipeline/store/models/richness_null_ms.rData")
 
-Richness_null<-Richness_m6
+Richness_null<-Richness_m13
 ```
 
 
@@ -172,13 +159,13 @@ Richness_null<-Richness_m6
 ```{r eval=FALSE}
 
 # RdNBR
-nmp1<-lme4::glmer(richness ~RdNBR + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp1<-lme4::glmer(richness ~RdNBR + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
-nmp2<-lme4::glmer(richness ~poly(RdNBR,2) + (1 | SS/survey_year), data=d, family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp2<-lme4::glmer(richness ~poly(RdNBR,2) + (1|cas_id/survey_year), data=d, family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
-nmp3<-lme4::glmer(richness ~poly(RdNBR,3) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp3<-lme4::glmer(richness ~poly(RdNBR,3) + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
-nmp4<-lme4::glmer(richness ~poly(RdNBR,4) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp4<-lme4::glmer(richness ~poly(RdNBR,4) + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
 print(AIC(nmp1, nmp2, nmp3, nmp4))
 
@@ -186,7 +173,7 @@ print(AIC(nmp1, nmp2, nmp3, nmp4))
 d1 <- d
 d1$RdNBR<-as.numeric(d1$RdNBR)
 
-pred<-effect_plot(nmp4, pred=RdNBR, data = d1,  plot.points=TRUE, interval=TRUE)
+pred<-effect_plot(nmp2, pred=RdNBR, data = d1,  plot.points=TRUE, interval=TRUE)
 plot(pred)
 
 #nmp2
@@ -194,13 +181,13 @@ plot(pred)
 
 ### dNBR_recovery
 
-nmp5<-lme4::glmer(richness ~dNBR_recovery + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp5<-lme4::glmer(richness ~dNBR_recovery + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
-nmp6<-lme4::glmer(richness ~poly(dNBR_recovery,2) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp6<-lme4::glmer(richness ~poly(dNBR_recovery,2) + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
-nmp7<-lme4::glmer(richness ~poly(dNBR_recovery,3) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp7<-lme4::glmer(richness ~poly(dNBR_recovery,3) + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
-nmp8<-lme4::glmer(richness ~poly(dNBR_recovery,4) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp8<-lme4::glmer(richness ~poly(dNBR_recovery,4) + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
 print(AIC(nmp5, nmp6, nmp7, nmp8))
 d1 <- d
@@ -212,25 +199,36 @@ plot(pred)
 
 ## ss_dst_timelag
 
-nmp9<-lme4::glmer(richness ~ss_dst_timelag_NBR + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp9<-lme4::glmer(richness ~ss_dst_timelag_nbr + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
-nmp10<-lme4::glmer(richness ~poly(ss_dst_timelag_NBR,2) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp10<-lme4::glmer(richness ~poly(ss_dst_timelag_nbr,2) + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
-nmp11<-lme4::glmer(richness ~poly(ss_dst_timelag_NBR,3) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp11<-lme4::glmer(richness ~poly(ss_dst_timelag_nbr,3) + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
-nmp12<-lme4::glmer(richness ~poly(ss_dst_timelag_NBR,4) + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+nmp12<-lme4::glmer(richness ~poly(ss_dst_timelag_nbr,4) + (1|cas_id/survey_year), data=d,  family = poisson, na.action = na.exclude, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
 print(AIC(nmp9, nmp10, nmp11, nmp12))
 
 d1 <- d
-d1$ss_dst_timelag_NBR<-as.numeric(d1$ss_dst_timelag_NBR)
+d1$ss_dst_timelag_nbr<-as.numeric(d1$ss_dst_timelag_nbr)
 
-pred<-effect_plot(nmp9, pred=ss_dst_timelag_NBR, data = d1,  plot.points=TRUE, interval=TRUE)
+pred<-effect_plot(nmp9, pred=ss_dst_timelag_nbr, data = d1,  plot.points=TRUE, interval=TRUE)
 plot(pred)
 
 # nmp10
 
 ```
+
+
+
+### Comapare NBR metrics
+```{r eval=FALSE}
+nbr_1<-glmer(richness ~ RdNBR+ dNBR + dNBR_perc+ (1|cas_id/survey_year), data=d,  family = poisson,  na.action=na.fail) 
+d_nbr_1<-MuMIn::dredge(nbr_1, extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
+
+```
+
+
 
 poly(ss_dst_timelag,2) 
 poly(dNBR_recovery,2)
@@ -239,11 +237,11 @@ poly(RdNBR,2)
 ### interaction effects {-}
 
 ```{r}
-in_1<-glm(richness ~ poly(ss_dst_timelag_NBR,2, raw=TRUE) * poly(RdNBR,2, raw=TRUE), data=d,  family = poisson,  na.action=na.fail) 
+in_1<-glmer(richness ~ poly(ss_dst_timelag_nbr,2, raw=TRUE) * dNBR_perc + (1|cas_id/survey_year), data=d,  family = poisson,  na.action=na.fail) 
 d_in_1<-MuMIn::dredge(in_1, extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
 
 
-in_2<-lme4::glmer(richness ~ poly(dNBR_recovery,2) * poly(RdNBR,2)   +  (1 | SS/survey_year), data=d,  family = poisson,  na.action=na.fail) 
+in_2<-lme4::glmer(richness ~ poly(dNBR_recovery,2) * poly(RdNBR,2)   +  (1|cas_id/survey_year), data=d,  family = poisson,  na.action=na.fail) 
 d_in_2<-MuMIn::dredge(in_2, extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
 
 
@@ -252,18 +250,23 @@ d_in_2<-MuMIn::dredge(in_2, extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(
 
 ### Global model
 ```{r eval=FALSE}
-# gm<-lme4::glmer(richness ~ PercentConif + Forest_Type + Shape_Area + PA_ratio + dist_ext_upper_1 + poly(ss_dst_timelag,2) * poly(RdNBR,2) + species_1 + dist_to_edge + (1 | SS/survey_year),offset=log(n_samples), data=d_orig,  family = poisson, na.action = na.fail, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+
+gm1<-lme4::glmer.nb(richness ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Shape_Area + PA_ratio +  ss_dst_timelag_nbr +dist_to_edge + dNBR_recovery + NBR_survey + Coniferous +Exposed_Barren_land + Herbs + Mixedwood + Shrubs +  Water + Wetland + Wetland_treed +
+canopy_height + canopy_standard_deviation +
+lat + (1|cas_id/survey_year), data=d,na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9))) 
 
 
-gm<-lme4::glmer(richness ~ Shape_Area + PA_ratio + poly(ss_dst_timelag_NBR,2, raw=TRUE) * poly(RdNBR,2, raw=TRUE)  + dist_to_edge + y + (1 | SS/survey_year), data=d,  family = poisson, na.action = na.fail, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+# gm1a<-lme4::glmer.nb(richness ~  ss_dst_timelag_nbr + dNBR_perc + Shape_Area + PA_ratio +  ss_dst_timelag_nbr +dist_to_edge + dNBR_recovery + NBR_survey + Coniferous +Exposed_Barren_land + Herbs + Mixedwood + Shrubs +  Water + Wetland + Wetland_treed +
+# canopy_height + canopy_standard_deviation +
+# lat + (1|cas_id/survey_year), data=d,  na.action = na.fail, control = glmerControl(optimizer = "bobyqa"))
 
-summary(gm)
+summary(gm1)
+#Check variance inflation factors of fixed effects
+l_vif<-as.data.frame(vif(gm1))
+l_vif
 
-
-
-richness_dredge<-MuMIn::dredge(gm, extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
-
-save(richness_dredge, file="2_pipeline/store/models/richness_dredge.rData")
+richness_dredge<-MuMIn::dredge(gm1, extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
+save(richness_dredge, file=paste0("2_pipeline/store/models/richness_dredge_", Sys.Date(), ".rData"))
 
 #get a subset of top models
 richness_dredge_sub<-subset(richness_dredge, delta<5) 
@@ -281,15 +284,15 @@ save(richness_dredge_imp, file="2_pipeline/store/models/richness_dredge_imp.rDAT
 ```{r eval=FALSE}
 
  
-m1<-lme4::glmer(richness ~  poly(dNBR_perc,2, raw=TRUE)* poly(ss_dst_timelag, 2 ,raw=TRUE)  + dist_to_edge + (1 | SS/survey_year), data=d2,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+m1<-lme4::glmer(richness ~  poly(dNBR_perc,2, raw=TRUE)* poly(ss_dst_timelag, 2 ,raw=TRUE)  + dist_to_edge + (1|cas_id/survey_year), data=d2,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
 
-m2<-lme4::glmer(richness ~ poly(ss_dst_timelag_NBR,2, raw=TRUE) * poly(RdNBR,2, raw=TRUE) + dist_to_edge + (1 | SS/survey_year), offset=log(n_samples), data=d,family = poisson, na.action = na.fail) 
+m2<-lme4::glmer(richness ~ poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(RdNBR,2, raw=TRUE) + dist_to_edge + (1|cas_id/survey_year), offset=log(n_samples), data=d,family = poisson, na.action = na.fail) 
 
-m2a<-lme4::glmer(richness ~ poly(ss_dst_timelag_NBR,2, raw=TRUE) * poly(dNBR_perc,2, raw=TRUE) + (1 | SS/survey_year), data=d,family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+m2a<-lme4::glmer(richness ~ poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc,2, raw=TRUE) + (1|cas_id/survey_year), data=d,family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
 
-m3<-lme4::glmer(richness ~ ss_dst_timelag * poly(RdNBR,2) + (1 | SS/survey_year), offset=log(n_samples), data=d,family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+m3<-lme4::glmer(richness ~ ss_dst_timelag * poly(RdNBR,2) + (1|cas_id/survey_year), offset=log(n_samples), data=d,family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
 
-m4<-lme4::glmer(richness ~ poly(ss_dst_timelag,2) * RdNBR + (1 | SS/survey_year), offset=log(n_samples), data=d,family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+m4<-lme4::glmer(richness ~ poly(ss_dst_timelag,2) * RdNBR + (1|cas_id/survey_year), offset=log(n_samples), data=d,family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
 
 
 anova(m3, m4)
@@ -308,7 +311,7 @@ plot(allEffects(m2))
 ggpredict(m2, c("RdNBR", "ss_dst_timelag")) %>% plot()
 
 
-m2<-lme4::glmer(richness ~ poly(ss_dst_timelag,2) * poly(RdNBR,2) + dist_to_edge + (1 | SS/survey_year), data=d, family = poisson, na.action = na.fail, control=glmerControl(optCtrl=list(maxfun=1e9))) 
+m2<-lme4::glmer(richness ~ poly(ss_dst_timelag,2) * poly(RdNBR,2) + dist_to_edge + (1|cas_id/survey_year), data=d, family = poisson, na.action = na.fail, control=glmerControl(optCtrl=list(maxfun=1e9))) 
 
 
 d2<-d%>%
@@ -331,10 +334,10 @@ Do time since harvest and dNBR predict NBR recovery
 ```{r eval=FALSE}
 
 d1<-d%>%
-  dplyr::select(cas_id, ss_dst_timelag_NBR, RdNBR, dNBR_recovery)%>%
+  dplyr::select(cas_id, ss_dst_timelag_nbr, RdNBR, dNBR_recovery)%>%
   distinct()
   
-dm1<-lm(dNBR_recovery ~ poly(ss_dst_timelag_NBR,2) * poly(RdNBR,2), data=d1) 
+dm1<-lm(dNBR_recovery ~ poly(ss_dst_timelag_nbr,2) * poly(RdNBR,2), data=d1) 
 summary(dm1)
 
 # Call:
@@ -381,10 +384,10 @@ summary(dm1)
 ```{r}
 
 
-m1<-lme4::glmer(richness ~  poly(dNBR_perc,2, raw=TRUE)* poly(ss_dst_timelag_NBR, 3 ,raw=TRUE)  + dist_to_edge + (1 | SS/survey_year), data=d1,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+m1<-lme4::glmer(richness ~  poly(dNBR_perc,2, raw=TRUE)* poly(ss_dst_timelag_nbr, 3 ,raw=TRUE)  + dist_to_edge + (1|cas_id/survey_year), data=d1,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
 
 
-m2<-lme4::glmer(richness ~ poly(dNBR_perc,2, raw=TRUE)+ poly(ss_dst_timelag_NBR, 3 ,raw=TRUE)  + dist_to_edge + (1 | SS/survey_year), data=d1,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+m2<-lme4::glmer(richness ~ poly(dNBR_perc,2, raw=TRUE)+ poly(ss_dst_timelag_nbr, 3 ,raw=TRUE)  + dist_to_edge + (1|cas_id/survey_year), data=d1,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
 
 d1$dist_ext_upper_1<-as.numeric(as.character(d1$dist_ext_upper_1))
 
@@ -392,12 +395,12 @@ d1$dist_ext_upper_1_sc<-scale(d1$dist_ext_upper_1)
 d1<-d1%>%
   dplyr::filter(dist_ext_upper_1>50)
 
-m3<-lme4::glmer(richness ~  poly(dist_ext_upper_1_sc,2, raw=TRUE) + poly(ss_dst_timelag_NBR, 3 ,raw=TRUE)  + dist_to_edge + (1 | SS/survey_year), data=d1,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
+m3<-lme4::glmer(richness ~  poly(dist_ext_upper_1_sc,2, raw=TRUE) + poly(ss_dst_timelag_nbr, 3 ,raw=TRUE)  + dist_to_edge + (1|cas_id/survey_year), data=d1,  family = poisson, na.action = na.fail, control=glmerControl(optimizer="bobyqa", optCtrl=list(maxfun=2e9))) 
 
 #Unscale predictors
 # Extract scales
-sc_1 <- attr(d1$ss_dst_timelag_NBR, 'scaled:scale')
-ce_1 <- attr(d1$ss_dst_timelag_NBR, 'scaled:center')
+sc_1 <- attr(d1$ss_dst_timelag_nbr, 'scaled:scale')
+ce_1 <- attr(d1$ss_dst_timelag_nbr, 'scaled:center')
 
 sc_2 <- attr(d1$dNBR_perc, 'scaled:scale')
 ce_2 <- attr(d1$dNBR_perc, 'scaled:center')
@@ -405,7 +408,7 @@ ce_2 <- attr(d1$dNBR_perc, 'scaled:center')
 sc_3 <- attr(d1$dist_ext_upper_1_sc, 'scaled:scale')
 ce_3 <- attr(d1$dist_ext_upper_1_sc, 'scaled:center')
 #######
-dd<-ggpredict(m1, terms = c("ss_dst_timelag_NBR [all]","dNBR_perc [all]"))%>%
+dd<-ggpredict(m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%
          as_tibble()%>% 
   mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
     # mutate(dNBR_perc_us_us = as.numeric(group))%>%
@@ -459,7 +462,7 @@ gg1
 #######
 #######
 #######
-dd<-ggpredict(m2, terms = c("ss_dst_timelag_NBR [all]","dNBR_perc [all]"))%>%
+dd<-ggpredict(m2, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%
          as_tibble()%>% 
   mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
     # mutate(dNBR_perc_us_us = as.numeric(group))%>%
@@ -496,7 +499,7 @@ gg2
 #######
 
 
-dd<-ggpredict(m3, terms = c("ss_dst_timelag_NBR [all]","dist_ext_upper_1_sc [all]"))%>%
+dd<-ggpredict(m3, terms = c("ss_dst_timelag_nbr [all]","dist_ext_upper_1_sc [all]"))%>%
          as_tibble()%>% 
   mutate(aa = as.numeric(as.character(group))* sc_3 + ce_3)%>%
     # mutate(dNBR_perc_us_us = as.numeric(group))%>%

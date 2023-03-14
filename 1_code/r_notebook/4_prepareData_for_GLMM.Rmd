@@ -84,7 +84,7 @@ Scale data
 
 p1<-bd_cov_f%>%
   rename(Wetland_treed="Wetland-treed")%>%
-  dplyr::select(SS, cas_id, survey_year, sampling_intensity, richness, menhIndx, margIndx, shan, brill, simp, pilou, hill, FRic, qual.FRic, FEve, FDiv, FDis, RaoQ, Shape_Area, PA_ratio, species_1, species_per_1, ss_dst_timelag, ss_dst_timelag_nbr,dist_to_edge, dNBR, RdNBR, dNBR_recovery, NBR_survey, dNBR_perc, dist_ext_upper_1, Coniferous,Exposed_Barren_land, Herbs, Mixedwood, Shrubs,  Water, Wetland, Wetland_treed,
+  dplyr::select(SS, cas_id, survey_year, sampling_intensity, richness, menhIndx, margIndx, shan, brill, simp, pilou, hill, FRic, qual.FRic, FEve, FDiv, FDis, RaoQ, Shape_Area, PA_ratio, ss_dst_timelag, ss_dst_timelag_nbr,dist_to_edge, dNBR, RdNBR, dNBR_recovery, NBR_survey, dNBR_perc, dist_ext_upper_1, Coniferous,Exposed_Barren_land, Herbs, Mixedwood, Shrubs,  Water, Wetland, Wetland_treed,
 canopy_height, canopy_standard_deviation,
 lat) %>%
   distinct()
@@ -112,7 +112,7 @@ p2<- cbind(p1[1:2],as.data.frame(unclass(p1[c(3:ncol(p1))]),
 # scale all numeric columns
 p3<- p2%>%
   ungroup()%>%
-   mutate(across(-c(SS:RaoQ,dist_ext_upper_1, species_1), scale))
+   mutate(across(-c(SS:RaoQ,dist_ext_upper_1), scale))
 
 # check classes
 lapply(p3, class)
@@ -138,12 +138,11 @@ lapply(p3, class)
 # p2$ss_dst_timelag_NBR<-scale(p2$ss_dst_timelag_NBR, center = TRUE, scale = TRUE)
 # 
 
-d<-p3%>%
-  na.omit()
+d<-p3
 
 save(d, file=paste0("0_data/manual/for_models/bd_cov_processed_", Sys.Date(), ".rData"))
 
-load("0_data/manual/for_models/bd_cov_processed_2023-03-08.rData")
+load("0_data/manual/for_models/bd_cov_processed_2023-03-09.rData")
 ```
 
 
