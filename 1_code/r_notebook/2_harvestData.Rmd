@@ -154,35 +154,41 @@ save(bd_xy_edge, file ="2_pipeline/tmp/bd_xy_edge.rData")
 
 Calculate the perimeter area ratio () of harvest polygons.
 ```{r eval=FALSE}
-# abmi_harvest<-abmi_harvest%>%
-abmi_harvest_test<-abmi_harvest%>%
+abmi_harvest<-st_read("0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_noHoles.shp")
+
+abmi_paRatio<-abmi_harvest%>%
   mutate(perimeter=st_length(st_cast(geometry, "MULTILINESTRING")))%>%
-  mutate(pa_ratio=perimeter/area)       
+  mutate(area=st_area(geometry))%>%
+  mutate(pa_ratio=perimeter/area)
+
+save(abmi_paRatio, file ="2_pipeline/tmp/abmi_paRatio.rData")
 ```
 
 #### Join {-}
 
 ```{r eval=FALSE}
 ss_xy_harvest<-st_join(ss_xy, casfri_harvest)%>%
-  st_join(abmi_harvest)%>%
+  st_join(abmi_paRatio)%>%
   dplyr::filter(!is.na(cas_id)|!is.na(HFI_ID))
 
 ss_xy_harvest_df<-ss_xy_harvest%>%
-  dplyr::select(c("SS","survey_year", "cas_id", "dist_1", "dst_y_1", "dst_xt_p_1", "dist_2", "dst_y_2", , "dst_xt_p_2", "HFI_ID",  "YEAR", "Mdfr_Yr"))%>%
+  dplyr::select(c("SS","survey_year", "cas_id", "dist_1", "dst_y_1", "dst_xt_p_1", "dist_2", "dst_y_2", , "dst_xt_p_2", "HFI_ID", "uniquID", "YEAR", "Mdfr_Yr", "perimeter", "area", "pa_ratio" ))%>%
   dplyr::mutate(dst_y_2 = replace(dst_y_2, dst_y_2== -1111, NA))%>%
   dplyr::mutate(dist_1_2_diff=dst_y_2-dst_y_1)%>%
   dplyr::rename(c(dist_yr_1=dst_y_1, dist_yr_2=dst_y_2, dist_ext_upper_1=dst_xt_p_1, dist_ext_upper_2=dst_xt_p_2))%>%
   as.data.frame()%>%
   # left_join(bd_xy_edge, by = c("SS", "survey_year", "HFI_ID"))%>%
   left_join(bd_xy_edge, by = c("SS", "survey_year", "HFI_ID"))%>%# add distance to edge column
-  dplyr::select(c("SS","survey_year", "dist_to_edge", "cas_id",  "dist_1", "dist_yr_1", "dist_ext_upper_1", "dist_2", "dist_yr_2", "dist_ext_upper_2", "dist_1_2_diff", "HFI_ID",  "YEAR", "Mdfr_Yr"))#%>%
+  dplyr::select(c("SS","survey_year", "dist_to_edge", "cas_id",  "dist_1", "dist_yr_1", "dist_ext_upper_1", "dist_2", "dist_yr_2", "dist_ext_upper_2", "dist_1_2_diff", "HFI_ID", "uniquID", "YEAR", "Mdfr_Yr", "perimeter", "area", "pa_ratio" ))%>%
+  mutate(perimeter=as.numeric(perimeter))%>%
+  mutate(area=as.numeric(area))%>%
+  mutate(pa_ratio=perimeter/area)
 #   dplyr::filter(survey_year>=YEAR|survey_year>=dst_y_1)
 #            as.data.frame()
 save(ss_xy_harvest_df, file=paste0("0_data/manual/spatial/ss_xy_harvest_df_", Sys.Date(), ".rData"))
 
 nrow(as.data.frame(unique(ss_xy_harvest_df$SS)))
 #3752         
-
 ```
 
 
