@@ -66,7 +66,8 @@ ss_xy <- ss_xy %>%
 
 gee_metrics_3<-dplyr::left_join(gee_metrics_2, ss_xy, by=c("SS", "srvy_yr"))
 
-save(gee_metrics_3, file="2_pipeline/tmp/gee_metrics_3.rData")
+gee_landcover<-gee_metrics_3
+save(gee_landcover, file="0_data/manual/gee_landcover.rData")
 ```
 
 ### NBR {-}
@@ -212,8 +213,7 @@ thisFile <- fread(rfmtFiles[m], data.table = FALSE)
 }
 
 #--- Create new data frame for further additions, and modifications
-fullData <- rfmtDat[order(rfmtDat$OBJECTID),]%>% 
-          dplyr::select(-uniquID)
+fullData <- rfmtDat[order(rfmtDat$OBJECTID),]
 str(fullData)
 
 save(fullData, file="0_data/manual/gee_tables/nbr/fulDataNBR.rData")
@@ -639,6 +639,25 @@ str(finalFullTable) #--- 172606 obs. of 55 variables
 #--------------------------------------------------------------------------------------------
 #--- Output full data set to CSV
 #--------------------------------------------------------------------------------------------
+
+save(finalFullTable, file="0_data/manual/gee_tables/nbr/finalFullTable.rData")
+#--- Write to csv
+fwrite(finalFullTable, file=paste0(filepath,"NBR_allMets_finalFullTable.csv"))
+
+```
+#### Add station ID {-}
+
+```{r eval=FALSE}
+load("0_data/manual/gee_tables/nbr/finalFullTable.rData")
+
+poly<-st_read("0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp.shp")
+
+# finalFullTable2<-finalFullTable%>%
+#   left_join(poly)
+
+# %>%
+#   dplyr::select(-c(geometry, Shap_Ar, Shp_Lng, SOURCE, FEATURE, SECTOR_, Mdfr_Yr))
+
 
 save(finalFullTable, file="0_data/manual/gee_tables/nbr/finalFullTable.rData")
 #--- Write to csv
