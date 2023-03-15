@@ -37,7 +37,7 @@ casfri_harvest<-casfri%>%
 st_write(casfri_harvest, "0_data/manual/spatial/harvest/casfri_harvest.shp")
 ```
 
-### ABMI harvests {-}
+## ABMI harvests {-}
 ```{r}
 abmi<-st_read("../Data/ABMI/HFI_2019_v2.gdb", layer="o18_HarvestAreas_HFI_2019")
 abmi$uniqueID <- 1:nrow(abmi) 
@@ -98,17 +98,25 @@ st_write(abmi_buff, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buf
 ####################################
 ## Filter to surveyed polygons
 ####################################
-surveyed<-st_join(abmi_buff, ss_xy)
-surveyed_2<-surveyed%>%
-  filter(!is.na(SS))%>%
-  dplyr::select(-c(uniqueID, survey_year))%>%
-  mutate(uniqueID=1:nrow(.))
-#4489  
+load("0_data/manual/spatial/bird/ss_xy.rData")
+ss_xy <- st_transform(ss_xy, crs = 3400)
 
-st_write(surveyed_2, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed.shp")
+# surveyed<-st_join(abmi_buff, ss_xy)
+# surveyed_2<-surveyed%>%
+#   filter(!is.na(SS))%>%
+#   # dplyr::select(-c(uniqueID, survey_year))%>%
+#   mutate(uniqueID=1:nrow(.))
+# #4489  
+# 
+# st_write(surveyed_2, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed.shp")
+# 
+# surveyed_3<-st_simplify(surveyed_2, dTolerance = 5)
+# st_write(surveyed_3, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp.shp")
 
-surveyed_3<-st_simplify(surveyed_2, dTolerance = 5)
-st_write(surveyed_3, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp.shp")
+surveyed<-st_filter(abmi_buff, ss_xy)
+st_write(surveyed, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_20220315.shp")
+surveyed_2<-st_simplify(surveyed, dTolerance = 5)
+st_write(surveyed_2, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_20220315.shp")
 
 ```
 
