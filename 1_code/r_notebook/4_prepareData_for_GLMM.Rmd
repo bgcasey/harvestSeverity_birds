@@ -7,19 +7,36 @@ Load data.
 
 ```{r}
 # GEE landcover
-load("2_pipeline/tmp/gee_metrics_3.rData")
+load("0_data/manual/gee_landcover.rData")
 
 # Harvest
-load("0_data/manual/spatial/ss_xy_harvest_df_2023-03-08.rData")
+load("0_data/manual/spatial/ss_xy_harvest_df_2023-03-14.rData")
 
-# NBR
-load("2_pipeline/tmp/ss_xy_abmiRegen_df.rData")
+# # NBR
+# load("2_pipeline/tmp/ss_xy_abmiRegen_df.rData")
 
 # Bird community
 load("0_data/manual/bird/bd_community_2023-02-10.rData")
 
 # NBR from CAS-FRI
-load("0_data/manual/spatial/spatial_cov.rData")
+# load("0_data/manual/spatial/spatial_cov.rData")
+
+# NBR from ABMI polygons
+load("0_data/manual/gee_tables/nbr/finalFullTable.rData")
+finalFullTable3<-finalFullTable2%>%
+  dplyr::select(c("SS", "HFI_ID","YEAR","Mdfr_Yr","preDistMean_mean", "yod_mean", "yod_stdev", "eocYr_mean", "totDistb_mean", "relDistbVal_mean", "sizeConf":"sumConf"))%>% 
+  # dplyr::select(-c(uniquID, OBJECTID, geometry, SOURCE))%>%
+  # dplyr::select(-c("yrTo30_mean":"PERC_NO20REGEN"))
+  # "yrTo30_mean", 
+    mutate_if(is.numeric,
+            round,
+            digits = 5)%>%
+  distinct()
+
+# %>%
+#   filter(uniquID==4613)
+
+
 ```
 
 
@@ -31,26 +48,170 @@ Join bird data and spatial data
 #   distinct()
 
 
-gee_metrics_3<-gee_metrics_3%>%
+gee_landcover<-gee_landcover%>%
   dplyr::rename(survey_year=srvy_yr)
 
-ss_cas<-ss_xy_harvest_df%>%dplyr::select(SS, survey_year, cas_id)
+# ss_cas<-ss_xy_harvest_df%>%dplyr::select(SS, survey_year, cas_id)
 
 bd_cov<-bd_community%>%
-  left_join(gee_metrics_3, by = c("SS", "survey_year"))%>%
+  left_join(gee_landcover, by = c("SS", "survey_year"))%>%
   left_join(ss_cas, by = c("SS", "survey_year"))%>%
   distinct()%>%
     # left_join(ss_xy_harvest_df, by = c("SS", "survey_year"))%>%
   dplyr::select(-c(x, y))%>%
   mutate(sampling_intensity=MAXDUR*n_count)%>%#calculate n of sampling minutes (for sampling_intensity)
   # left_join(ss_xy_abmiRegen_df)%>%distinct()%>%
-  left_join(spatial_cov, by=c("SS", "cas_id", "survey_year"))
-
+  # left_join(spatial_cov, by=c("SS", "cas_id", "survey_year"))
+  left_join(ss_xy_harvest_df)
 bd_cov<-bd_cov%>%
   # add timelag columns
   mutate(ss_dst_timelag=survey_year-round(dist_yr_1, 0))%>%
   mutate(ss_dst_timelag_nbr=survey_year-round(yod, 0))%>%
   mutate(dist_date_dif=ss_dst_timelag_nbr-ss_dst_timelag)
+
+
+
+bd_cov<-bd_community%>%
+  left_join(gee_landcover, by = c("SS", "survey_year"))%>%
+# %>%
+  left_join(ss_xy_harvest_df)%>%
+  # select(-uniquID)%>%
+  left_join(finalFullTable3)
+distinct()#30011
+
+test2<-test%>%
+  filter(!is.na(HFI_ID))%>%
+  # dplyr::select(-SS)%>%
+#   dplyr::select(-survey_year)%>%
+    # dplyr::select(-HFI_ID)%>%
+  # dplyr::select(-YEAR)%>%
+  # dplyr::select(-n_count)%>%#x
+  # dplyr::select(-MAXDUR)%>%#x
+  # dplyr::select(-MAXDIS)%>%#x
+  dplyr::select(-x)%>%
+  dplyr::select(-y)%>%
+  dplyr::select(-surveyType)%>%
+  dplyr::select(-richness)%>%
+  dplyr::select(-menhIndx)%>%
+  dplyr::select(-margIndx)%>%
+  dplyr::select(-shan)%>%
+  dplyr::select(-brill)%>%
+  dplyr::select(-simp)%>%
+  dplyr::select(-pilou)%>%
+  dplyr::select(-hill)%>%
+  dplyr::select(-nbsp)%>%
+  dplyr::select(-sing.sp)%>%
+  dplyr::select(-FRic)%>%
+  dplyr::select(-qual.FRic)%>%
+  dplyr::select(-FEve)%>%
+  dplyr::select(-FDiv)%>%
+  dplyr::select(-FDis)%>%
+  dplyr::select(-RaoQ)%>%
+  dplyr::select(-Broadleaf)%>%
+  dplyr::select(-Bryoids)%>%
+  dplyr::select(-Coniferous)%>%
+  dplyr::select(-Exposed_Barren_land)%>%
+  dplyr::select(-Herbs)%>%
+  dplyr::select(-Mixedwood)%>%
+  dplyr::select(-Rock_Rubble)%>%
+  dplyr::select(-Shrubs)%>%
+  dplyr::select(-Snow_Ice)%>%
+  dplyr::select(-Unclassified)%>%
+  dplyr::select(-Water)%>%
+  dplyr::select(-Wetland)%>%
+  dplyr::select(-"Wetland-treed")%>%
+  dplyr::select(-canopy_height)%>%
+  dplyr::select(-canopy_standard_deviation)%>%
+  dplyr::select(-lon)%>%
+  dplyr::select(-lat)%>%
+  dplyr::select(-dist_to_edge)%>%
+  dplyr::select(-cas_id)%>%
+  dplyr::select(-dist_1)%>%
+  dplyr::select(-dist_yr_1)%>%
+  dplyr::select(-dist_ext_upper_1)%>%
+  dplyr::select(-dist_2)%>%
+  dplyr::select(-dist_yr_2)%>% #30359
+  dplyr::select(-dist_ext_upper_2)%>% #30355
+  dplyr::select(-dist_1_2_diff)%>%
+
+  dplyr::select(-Mdfr_Yr)%>%
+  dplyr::select(-perimeter)%>%
+  dplyr::select(-area)%>%
+  dplyr::select(-pa_ratio)%>% #30355 #6887
+  # dplyr::select(-preDistMean_mean)%>% #303055
+  dplyr::select(-yod_stdev)%>%
+  dplyr::select(-eocYr_mean)%>%
+  # dplyr::select(-totDistb_mean)%>%#303055
+  # dplyr::select(-relDistbVal_mean)%>% #30007 6539
+  dplyr::select(-sizeConf)%>%
+  dplyr::select(-availPixConf)%>%
+  dplyr::select(-contgPixConf)%>%
+  dplyr::select(-yodConf)%>%
+  dplyr::select(-t2regenConf)%>%
+  dplyr::select(-distbConf)%>%
+  dplyr::select(-regenConf)%>%
+  dplyr::select(-y2r80Conf)%>%
+  dplyr::select(-reg5yrConf)%>%
+  dplyr::select(-sumConf)%>%#30007
+  distinct()
+
+30359
+
+29683
+
+
+6887
+
+%>%
+  filter(SS=="AM-403-NW"&survey_year==2014)%>%
+  distinct()
+
+
+%>%
+
+%>%
+  # distinct()
+
+`%>%
+  rename_all(funs(stringr::str_replace_all(., "_mean", '')))%>%
+  mutate(NBR_dist_YEAR=round(yod))
+
+%>%
+  mutate(ss_dst_timelag=survey_year-round(dist_yr_1, 0))%>%
+  mutate(ss_dst_timelag_nbr=survey_year-round(yod, 0))%>%
+  mutate(dist_date_dif=ss_dst_timelag_nbr-ss_dst_timelag)
+
+
+
+
+
+finalFullTable4<-finalFullTable3
+  # dplyr::select(c(HFI_ID, YEAR, SS, preDistMean_mean))
+data_round1 <- data.frame(lapply(finalFullTable4,    # Using Base R functions
+                                 function(x) if(is.numeric(x)) round(x, 1) else x))
+finalFullTable4 <- finalFullTable3 %>%                   # Using dplyr functions
+  mutate_if(is.numeric,
+            round,
+            digits = 3)%>%  
+  select(-c("preDistMean_mean":"PERC_MULTIDISTB"))%>%
+  distinct()
+  
+
+distinct()
+  
+  
+  
+  select(-c("SS", "HFI_ID", "FEATURE", "Mdfr_Yr", "SECTOR_", "YEAR":"yrTo100_mean"))%>%
+  distinct()
+ 
+test<-ss_xy_harvest_df%>%
+  left_join(finalFullTable4)%>%
+  filter(SS=="CL:CC-3:5" & survey_year==1995)%>%
+  distinct()
+
+
+
+
 
 ## add sampling intensity column
 # bd_cov<-bd_cov%>%
