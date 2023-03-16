@@ -40,7 +40,7 @@ rm -r harvest_severity_birds/
 
 ## GEE CSVs {.unnumbered}
 
-### Landcover metrics {-}
+### Landcover metrics {.unnumbered}
 
 ```{r eval=FALSE}
 gee_metrics<-read_csv("0_data/manual/gee_tables/gee_metrics.csv")
@@ -48,8 +48,12 @@ gee_metrics<-read_csv("0_data/manual/gee_tables/gee_metrics.csv")
 gee_metrics_2<-gee_metrics%>%  
   dplyr::select(-c(histogram, "system:time_start", ".geo", "system:index", "count"))%>%
   dplyr::select(SS, 17:18, 1:7, 9:16)%>%
-  dplyr::filter(landcover_yr==srvy_yr)%>%
-  dplyr::select(-landcover_yr)
+  dplyr::filter(landcover_yr==srvy_yr|srvy_yr>=2020)%>%
+  mutate(landcover_yr_2 = ifelse(srvy_yr >= 2020, 2019, landcover_yr))%>%
+  filter(landcover_yr_2==landcover_yr)%>%
+  dplyr::select(-landcover_yr)%>%
+  dplyr::rename(landcover_yr=landcover_yr_2)
+
 
 ### add latitude
 library(sf)
@@ -70,7 +74,7 @@ gee_landcover<-gee_metrics_3
 save(gee_landcover, file="0_data/manual/gee_landcover.rData")
 ```
 
-### NBR {-}
+### NBR {.unnumbered}
 
 ```{r importGEE_csv, eval=FALSE}
 
@@ -81,158 +85,95 @@ origFiles <- list.files(path=paste0(filepath, "unprocessed/"), pattern="*.csv$",
 
 ```
 
-
-
-#### Reformat each .csv file {-}
+#### Reformat each .csv file {.unnumbered}
 
 ```{r reformatGEEcsv, eval=FALSE}
 
-#--- For each file, do...
-for (i in 1:length(origFiles)) {
+#--- Import data from current file
+thisDat <- fread("0_data/manual/gee_tables/HA_Polys_ABMI2021_20220315.csv", data.table = FALSE)
   
-  #--- Message to user
-  print(paste("Reformatting file", i, "of", length(origFiles), "..."))
-  
-  #--- Import data from current file
-  thisDat <- fread(origFiles[i], data.table = FALSE)
-  
-  #--- Generate list of unique OBJECTID values
-  OIDs <- sort(unique(thisDat$OBJECTID), decreasing=FALSE)
-  
-  #--- Dataframe of survey and CAS-FRI info
-  surv<-unique(thisDat[c(1:4)])
+#--- Generate list of unique OBJECTID values
+OIDs <- sort(unique(thisDat$OBJECTID), decreasing=FALSE)
 
-  #--- Compile vector of all unique metric values
-  metricList <- as.character(unique(thisDat$METRIC))
+#--- Dataframe of survey and CAS-FRI info
+surv<-unique(thisDat[c(1:4)])
+
+#--- Compile vector of all unique metric values
+metricList <- as.character(unique(thisDat$METRIC))
   
   #--- Create column names so that the mean and standard deviation of each metric have columns
-  fullMetricCols <- list()
+fullMetricCols <- list()
   for (n in 1:length(metricList)){
     meanName <- paste0(metricList[n],"_mean")
     stdevName <- paste0(metricList[n],"_stdev")
     fullMetricCols <- c(fullMetricCols,meanName,stdevName)
   }
   
-
-  #--- Reformat metric data to create new table
-  #--------------------------------------------
+#--- Reformat metric data to create new table
+#--------------------------------------------
   
-  #--- Initiatlize a dataframe, with OBJECTIDs in the first column
-  outMetTable <- data.frame("OBJECTID"=OIDs)
+#--- Initiatlize a dataframe, with OBJECTIDs in the first column
+outMetTable <- data.frame("OBJECTID"=OIDs)
 
-  #--- For each item in metricList, do the following:
-  for (j in 1:length(metricList)){
-    
+#--- For each item in metricList, do the following:
+for (j in 1:length(metricList)){
     #--- Subset thisDat, selecting rows where the current metric in the list
     #---   is in the METRIC column, but output only the METRIC_MEAN and METRIC_STDEV columns
     colData <- subset(thisDat, METRIC == metricList[j], select = c("OBJECTID","METRIC_MEAN","METRIC_STDEV"))
     colData <- colData[order(colData$OBJECTID),]
     outData <- subset(colData, select = c("METRIC_MEAN","METRIC_STDEV"))
-    
     #--- Extract the corresponding, appropriate column names for metric [j] from fullMetricCols
     metricPos <- which(fullMetricCols == paste0(metricList[j],"_mean"))
     colnames(outData) <- fullMetricCols[c(metricPos,metricPos+1)]
-    
     #--- Add the result to the outMetTable dataframe
     outMetTable <- cbind(outMetTable, outData)
   }
 
-  #--- Reformat flag data, and combine with metric data
-  #----------------------------------------------------
+#--- Reformat flag data, and combine with metric data
+#----------------------------------------------------
   
-  #--- Create output data frame
-  flagData <- data.frame("TOT_PIXELS"=0,"PERC_UNMSKD"=0,"UNMSKD_PIXELS"=0,"MAX_CONNCTDPIX"=0,"PERC_NOHARVEST"=0,
-                         "PERC_MULTIDISTB"=0,"PERC_OUTOFRANGE"=0,"PERC_NOREGEN"=0,"PERC_NO5REGEN"=0,
-                         "PERC_NO10REGEN"=0,"PERC_NO15REGEN"=0,"PERC_NO20REGEN"=0)
+#--- Create output data frame
+flagData <- data.frame("TOT_PIXELS"=0,"PERC_UNMSKD"=0,"UNMSKD_PIXELS"=0,"MAX_CONNCTDPIX"=0,"PERC_NOHARVEST"=0,"PERC_MULTIDISTB"=0,"PERC_OUTOFRANGE"=0,"PERC_NOREGEN"=0,"PERC_NO5REGEN"=0,"PERC_NO10REGEN"=0,"PERC_NO15REGEN"=0,"PERC_NO20REGEN"=0)
  
-  #--- List of relevant columns
-  flagCols <- c("TOT_PIXELS","PERC_UNMSKD","UNMSKD_PIXELS","MAX_CONNCTDPIX","PERC_NOHARVEST","PERC_MULTIDISTB",
-                "PERC_OUTOFRANGE","PERC_NOREGEN","PERC_NO5REGEN","PERC_NO10REGEN",
-                "PERC_NO15REGEN","PERC_NO20REGEN")
+#--- List of relevant columns
+flagCols <- c("TOT_PIXELS","PERC_UNMSKD","UNMSKD_PIXELS","MAX_CONNCTDPIX","PERC_NOHARVEST","PERC_MULTIDISTB","PERC_OUTOFRANGE","PERC_NOREGEN","PERC_NO5REGEN","PERC_NO10REGEN","PERC_NO15REGEN","PERC_NO20REGEN")
 
-  #--- Extract "TOT_PIXELS", "UNMSKD_PIXELS", & other Flag columns for each OBJECTID
-  for (k in 1:length(OIDs)){
+#--- Extract "TOT_PIXELS", "UNMSKD_PIXELS", & other Flag columns for each OBJECTID
+for (k in 1:length(OIDs)){
     
-    #--- Find first occurrnce of current OBJECTID, extract flag column data,
-    #--- and add to flagData data frame
-    objRow <- match(OIDs[k], thisDat[,"OBJECTID"])
-    objFlags <- thisDat[objRow,flagCols]
-    flagData <- rbind(flagData,objFlags)
-    
+  #--- Find first occurrnce of current OBJECTID, extract flag column data,
+  #--- and add to flagData data frame
+  objRow <- match(OIDs[k], thisDat[,"OBJECTID"])
+  objFlags <- thisDat[objRow,flagCols]
+  flagData <- rbind(flagData,objFlags)
   }
  
-  #--- Remove first row (full of zeros)
-  flagData <- flagData[-1,]
+#--- Remove first row (full of zeros)
+flagData <- flagData[-1,]
 
-  #--- Add flag columns to metric information
-  outMetTable <- cbind(outMetTable, flagData)
+#--- Add flag columns to metric information
+outMetTable <- cbind(outMetTable, flagData)
 
-  #-- add survey info to metric table
-  outMetTable_fin <-left_join(outMetTable,surv)
-  # outMetTable_fin <- outMetTable_fin[, c(1, 48:50, 2:47)]
-  outMetTable_fin <- outMetTable_fin%>%
-    dplyr::select(OBJECTID, HFI_ID, uniquID, YEAR, preDistMean_mean:PERC_NO20REGEN)
-
-  
-  
-  #--- Write to output file
-  #------------------------
-  
-  #--- Create output file name
-  fullName <- substr(origFiles[i], 1, nchar(origFiles[i])-4)
-  fileName <- substr(fullName, nchar(paste0(filepath, "unprocessed/")), nchar(fullName))
-  
-  extension <- substr(origFiles[i], nchar(origFiles[i])-3, nchar(origFiles[i]))
-  outputName <- paste0(filepath,'reformatted/',fileName,"_RFMTTD",extension)
-  #outputName <- paste0('../LandsatNBR/output/tables/reformatted/',fileName,"_RFMTTD",extension)
-
-  #--- Write to file
-  fwrite(outMetTable_fin, file = outputName)
-
-  #--- Output message to console
-  print(paste("Done."))
-}
-
-```
+#-- add survey info to metric table
+outMetTable_fin <-left_join(outMetTable,surv)
+# outMetTable_fin <- outMetTable_fin[, c(1, 48:50, 2:47)]
+outMetTable_fin <- outMetTable_fin%>%
+dplyr::select(OBJECTID, HFI_ID, uniquID, YEAR, preDistMean_mean:PERC_NO20REGEN)
 
 
-#### Compile reformatted files into one {-}
-
-```{r compile_reformatted_files, eval=FALSE}
-
-#--- Get list of names for new reformatted metric files
-rfmtFiles <- list.files(path=paste0(filepath, 'reformatted'), pattern="*_RFMTTD.csv", full.names=TRUE, recursive=TRUE)
-
-#--- Read in first file to create data frame
-rfmtDat <- fread(rfmtFiles[1], data.table = FALSE)
-
-#--- For remaining files, read in data and add to existing data frame
-for (m in 2:length(rfmtFiles)) {
-thisFile <- fread(rfmtFiles[m], data.table = FALSE)
- rfmtDat <- rbind(rfmtDat, thisFile)
-}
+#--- Write to output file
+#------------------------
+fwrite(outMetTable_fin, file = "0_data/manual/gee_tables/HA_Polys_ABMI2021_20220315_RFMTTD.csv")
 
 #--- Create new data frame for further additions, and modifications
-fullData <- rfmtDat[order(rfmtDat$OBJECTID),]
+fullData <- outMetTable_fin[order(outMetTable_fin$OBJECTID),]
 str(fullData)
-
-save(fullData, file="0_data/manual/gee_tables/nbr/fulDataNBR.rData")
+save(fullData, file=paste0("0_data/manual/gee_tables/fulDataNBR_", Sys.Date(), ".rData"))
 ```
 
-```{r fulDataNBR_in_table, echo=FALSE, results="asis"}
-load("2_pipeline/store/fulDataNBR.rData")
-
-knitr::kable(head(fullData)) %>%
-  kable_styling(font_size = 10, bootstrap_options= c("striped", "hover", "condensed" ), full_width= F, position="center") %>%
-  column_spec(1, width= "20em")%>%
-  scroll_box(width = "100%", height = "400px")
-```
-
-
-#### Calculate confidence scores and add to data frame {-}
+#### Calculate confidence scores and add to data frame {.unnumbered}
 
 Calculate relative confidence scores for each HA polygon based on various flag and metric results, using table found in "JHird_ABMI_HArecovery_overview&prelimStats_20191004.pdf",where 0 = Very Low, 1=Low, 2=Medium-Low, 3=Medium, 4=Medium-High, 5=High, and 6=Very High
-
 
 ```{r calculate_confidence_scores, eval=FALSE}
 
@@ -636,43 +577,23 @@ str(finalFullTable) #--- 172606 obs. of 55 variables
 
 
 
-#--------------------------------------------------------------------------------------------
+#------------------------------- -------------------------------------------------------------
 #--- Output full data set to CSV
 #--------------------------------------------------------------------------------------------
 
-save(finalFullTable, file="0_data/manual/gee_tables/nbr/finalFullTable.rData")
+save(finalFullTable, file="0_data/manual/gee_tables/finalFullTable.rData")
 #--- Write to csv
-fwrite(finalFullTable, file=paste0(filepath,"NBR_allMets_finalFullTable.csv"))
-
-```
-#### Add station ID {-}
-
-```{r eval=FALSE}
-load("0_data/manual/gee_tables/nbr/finalFullTable.rData")
-
-poly<-st_read("0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp.shp")
-
-# finalFullTable2<-finalFullTable%>%
-#   left_join(poly)
-
-# %>%
-#   dplyr::select(-c(geometry, Shap_Ar, Shp_Lng, SOURCE, FEATURE, SECTOR_, Mdfr_Yr))
-
-
-save(finalFullTable, file="0_data/manual/gee_tables/nbr/finalFullTable.rData")
-#--- Write to csv
-fwrite(finalFullTable, file=paste0(filepath,"NBR_allMets_finalFullTable.csv"))
+fwrite(finalFullTable, file=paste0("0_data/manual/gee_tables/NBR_allMets_finalFullTable_", Sys.Date(), ".rData"))
 
 ```
 
-
-#### Remove inappropriate, low-confidence, and/or irrelevant records {-}
+#### Flag inappropriate, low-confidence, and/or irrelevant records {.unnumbered}
 
 ```{r cleanGEEdata, eval=FALSE}
-
+load("0_data/manual/gee_tables/finalFullTable.rData")
 ##--- Create new data frame for cleaning
 cleanData <- finalFullTable
-dim(cleanData) #4793
+dim(cleanData) #1671
 
 #--- Remove records based on NA values, numbers of pixels, and % of HA unmasked::
 #--------------------------------------------------------------------------------
@@ -686,48 +607,48 @@ dim(cleanData) #4793
 # 
 # save(cleanData_na, file="2_pipeline/store/NBR_clean_NA_in")
 
+#--- Remove rows/data records wherein >50% of pixels are flagged and masked out
+length(which(cleanData$PERC_UNMSKD < 20)) #--- n = 15792
+cleanData <- cleanData[which(cleanData$PERC_UNMSKD >= 20),]
+dim(cleanData) #--- n = 2280 obs.
+
 #--- Remove rows with < 9 total pixels
 length(which(cleanData$UNMSKD_PIXELS < 9)) #--- n = 37804 (rows total available pixels < 9)
-cleanData <- cleanData[which(cleanData$UNMSKD_PIXELS >= 9),]
+cleanData <- cleanData[which(cleanData$UNMSKD_PIXELS >= 5),]
 dim(cleanData) #--- n = 4168 obs.
 
 #--- Examine how many rows with no. connected pix < 9 and < 11
 length(which(cleanData$MAX_CONNCTDPIX < 9)) #--- n = 3001
 length(which(cleanData$MAX_CONNCTDPIX < 11)) #--- n = 4364
-cleanData <- cleanData[which(cleanData$MAX_CONNCTDPIX >= 11),]
+cleanData <- cleanData[which(cleanData$MAX_CONNCTDPIX >= 5),]
 dim(cleanData) #3535
 
-#--- Remove rows/data records wherein >50% of pixels are flagged and masked out
-length(which(cleanData$PERC_UNMSKD < 50)) #--- n = 15792
-cleanData <- cleanData[which(cleanData$PERC_UNMSKD >= 50),]
-dim(cleanData) #--- n = 2280 obs.
-
-#--- Remove values for 10-yr, 15-yr, and 20-yr regen where not appropriate::
-#---------------------------------------------------------------------------
-
-#---  Set all 20-yr, 15-yr, and 10-yr regen to NA where <50% of pixels in a
-#---    harvest area are available to calculate these
-length(which(cleanData$PERC_NO20REGEN > 50.0)) #--- n = 50017
-no20yrRows <- which(cleanData$PERC_NO20REGEN > 50.0)
-cleanData[no20yrRows, c("regen20yr_mean","regen20yr_stdev")] <- NA
-
-head(cleanData[which(cleanData$PERC_NO20REGEN > 50.0),c("OBJECTID","PERC_NO20REGEN","regen20yr_mean","regen20yr_stdev")], 20)
-
-length(which(cleanData$PERC_NO15REGEN > 50.0)) #--- n = 31500
-no15yrRows <- which(cleanData$PERC_NO15REGEN > 50.0)
-cleanData[no15yrRows, c("regen15yr_mean","regen15yr_stdev")] <- NA
-
-head(cleanData[which(cleanData$PERC_NO15REGEN > 50.0),c("OBJECTID","PERC_NO15REGEN","regen15yr_mean","regen15yr_stdev")], 20)
-
-length(which(cleanData$PERC_NO10REGEN > 50.0)) #--- n = 13817
-no10yrRows <- which(cleanData$PERC_NO10REGEN > 50.0)
-cleanData[no10yrRows, c("regen10yr_mean","regen10yr_stdev")] <- NA
-
-head(cleanData[which(cleanData$PERC_NO10REGEN > 50.0),c("OBJECTID","PERC_NO10REGEN","regen10yr_mean","regen10yr_stdev")], 20)
-
-length(which(cleanData$PERC_NO5REGEN > 50.0)) #--- n = 0
-no5yrRows <- which(cleanData$PERC_NO5REGEN > 50.0)
-cleanData[no5yrRows, c("regen5yr_mean","regen5yr_stdev")] <- NA
+# #--- Remove values for 10-yr, 15-yr, and 20-yr regen where not appropriate::
+# #---------------------------------------------------------------------------
+# 
+# #---  Set all 20-yr, 15-yr, and 10-yr regen to NA where <50% of pixels in a
+# #---    harvest area are available to calculate these
+# length(which(cleanData$PERC_NO20REGEN > 50.0)) #--- n = 50017
+# no20yrRows <- which(cleanData$PERC_NO20REGEN > 50.0)
+# cleanData[no20yrRows, c("regen20yr_mean","regen20yr_stdev")] <- NA
+# 
+# head(cleanData[which(cleanData$PERC_NO20REGEN > 50.0),c("OBJECTID","PERC_NO20REGEN","regen20yr_mean","regen20yr_stdev")], 20)
+# 
+# length(which(cleanData$PERC_NO15REGEN > 50.0)) #--- n = 31500
+# no15yrRows <- which(cleanData$PERC_NO15REGEN > 50.0)
+# cleanData[no15yrRows, c("regen15yr_mean","regen15yr_stdev")] <- NA
+# 
+# head(cleanData[which(cleanData$PERC_NO15REGEN > 50.0),c("OBJECTID","PERC_NO15REGEN","regen15yr_mean","regen15yr_stdev")], 20)
+# 
+# length(which(cleanData$PERC_NO10REGEN > 50.0)) #--- n = 13817
+# no10yrRows <- which(cleanData$PERC_NO10REGEN > 50.0)
+# cleanData[no10yrRows, c("regen10yr_mean","regen10yr_stdev")] <- NA
+# 
+# head(cleanData[which(cleanData$PERC_NO10REGEN > 50.0),c("OBJECTID","PERC_NO10REGEN","regen10yr_mean","regen10yr_stdev")], 20)
+# 
+# length(which(cleanData$PERC_NO5REGEN > 50.0)) #--- n = 0
+# no5yrRows <- which(cleanData$PERC_NO5REGEN > 50.0)
+# cleanData[no5yrRows, c("regen5yr_mean","regen5yr_stdev")] <- NA
 
 #--- Remove records based on low confidence scores::
 #---------------------------------------------------
@@ -778,21 +699,16 @@ str(cleanData)
 #Combine filtered and unfiltered data add a column for data that categroizes data by data I'm confident in and data that I'm not confident in
 #-------------------------
 
-t<-anti_join(cleanData_na, cleanData,  c("OBJECTID", "HFI_ID", "YEAR")
+t<-anti_join(finalFullTable, cleanData,  c("OBJECTID", "HFI_ID", "YEAR"))%>%
+  mutate(flag_pixels="y")
 dim(t) #2730
+
+cleanData$flag_pixels="n"
 
 t$highConf="n"
 cleanData$highConf="y"
 
-nbr_cleanData<-rbind(cleanData,t)
+nbr_flagData<-rbind(cleanData,t)
 
-save(nbr_cleanData_in, file="2_pipeline/store/nbr_cleanData.rDATA")
-#--------------------------------------------------------------------------------------------
-#--- Output clean data set to CSV
-#--------------------------------------------------------------------------------------------
-
-#--- Write to csv
-fwrite(nbr_cleanData_in, file=paste0(filepath,"final/nbr_cleanData_in.csv"))
-
+save(nbr_flagData, file="0_data/manual/gee_tables/finalFullTable_flag.rData")
 ```
-
