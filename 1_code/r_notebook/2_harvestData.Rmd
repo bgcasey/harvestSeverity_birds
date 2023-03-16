@@ -78,7 +78,7 @@ abmi_3<-st_remove_holes(abmi_2)
 valid_3<-st_is_valid(abmi_3, reason = TRUE)
 valid_3<-as.data.frame(valid_3)
 st_write(abmi_3, "0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_noHoles.shp")
-
+"0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_noHoles.shp"
 ####################################
 ## create a 30 m negative buffer
 ####################################
@@ -179,6 +179,9 @@ ss_xy_harvest<-st_join(ss_xy, casfri_harvest)%>%
   st_join(abmi_paRatio)%>%
   dplyr::filter(!is.na(cas_id)|!is.na(HFI_ID))
 
+bd_xy_edge2<-bd_xy_edge%>%dplyr::select(SS, dist_to_edge)%>%
+distinct()
+
 ss_xy_harvest_df<-ss_xy_harvest%>%
   dplyr::select(c("SS","survey_year", "cas_id", "dist_1", "dst_y_1", "dst_xt_p_1", "dist_2", "dst_y_2", , "dst_xt_p_2", "HFI_ID", "uniquID", "YEAR", "Mdfr_Yr", "perimeter", "area", "pa_ratio" ))%>%
   dplyr::mutate(dst_y_2 = replace(dst_y_2, dst_y_2== -1111, NA))%>%
@@ -186,7 +189,7 @@ ss_xy_harvest_df<-ss_xy_harvest%>%
   dplyr::rename(c(dist_yr_1=dst_y_1, dist_yr_2=dst_y_2, dist_ext_upper_1=dst_xt_p_1, dist_ext_upper_2=dst_xt_p_2))%>%
   as.data.frame()%>%
   # left_join(bd_xy_edge, by = c("SS", "survey_year", "HFI_ID"))%>%
-  left_join(bd_xy_edge, by = c("SS", "survey_year", "HFI_ID"))%>%# add distance to edge column
+  left_join(bd_xy_edge2, by = c("SS"))%>%# add distance to edge column
   dplyr::select(c("SS","survey_year", "dist_to_edge", "cas_id",  "dist_1", "dist_yr_1", "dist_ext_upper_1", "dist_2", "dist_yr_2", "dist_ext_upper_2", "dist_1_2_diff", "HFI_ID", "uniquID", "YEAR", "Mdfr_Yr", "perimeter", "area", "pa_ratio" ))%>%
   mutate(perimeter=as.numeric(perimeter))%>%
   mutate(area=as.numeric(area))%>%
