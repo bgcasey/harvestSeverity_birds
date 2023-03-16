@@ -3,308 +3,139 @@
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
-Load data. 
+## Load data {-}
 
-```{r}
+```{r eval=FALSE}
+
+library(dplyr)
+
 # GEE landcover
 load("0_data/manual/gee_landcover.rData")
+gee_landcover<-gee_landcover%>%
+  dplyr::rename(survey_year=srvy_yr)
 
 # Harvest
-load("0_data/manual/spatial/ss_xy_harvest_df_2023-03-14.rData")
-
-# # NBR
-# load("2_pipeline/tmp/ss_xy_abmiRegen_df.rData")
+load("0_data/manual/spatial/ss_xy_harvest_df_2023-03-16.rData")
 
 # Bird community
 load("0_data/manual/bird/bd_community_2023-02-10.rData")
 
-# NBR from CAS-FRI
-# load("0_data/manual/spatial/spatial_cov.rData")
-
 # NBR from ABMI polygons
-load("0_data/manual/gee_tables/nbr/finalFullTable.rData")
-finalFullTable3<-finalFullTable2%>%
-  dplyr::select(c("SS", "HFI_ID","YEAR","Mdfr_Yr","preDistMean_mean", "yod_mean", "yod_stdev", "eocYr_mean", "totDistb_mean", "relDistbVal_mean", "sizeConf":"sumConf"))%>% 
-  # dplyr::select(-c(uniquID, OBJECTID, geometry, SOURCE))%>%
-  # dplyr::select(-c("yrTo30_mean":"PERC_NO20REGEN"))
-  # "yrTo30_mean", 
-    mutate_if(is.numeric,
-            round,
-            digits = 5)%>%
-  distinct()
-
-# %>%
-#   filter(uniquID==4613)
-
+load("0_data/manual/gee_tables/finalFullTable_flag.rData")
 
 ```
 
 
-Join bird data and spatial data
+## Join bird data and spatial data
 
 ```{r eval=FALSE}
-# test<-abmi_regen%>%
-#   dplyr::select(-c( "OBJECTID","SOURCE","AnlysID", "geometry"))%>%
-#   distinct()
-
-
-gee_landcover<-gee_landcover%>%
-  dplyr::rename(survey_year=srvy_yr)
-
-# ss_cas<-ss_xy_harvest_df%>%dplyr::select(SS, survey_year, cas_id)
 
 bd_cov<-bd_community%>%
   left_join(gee_landcover, by = c("SS", "survey_year"))%>%
-  left_join(ss_cas, by = c("SS", "survey_year"))%>%
-  distinct()%>%
-    # left_join(ss_xy_harvest_df, by = c("SS", "survey_year"))%>%
+  distinct()%>% #29989
+  left_join(ss_xy_harvest_df)%>% #30057
+  left_join(nbr_flagData)%>% #30057
   dplyr::select(-c(x, y))%>%
-  mutate(sampling_intensity=MAXDUR*n_count)%>%#calculate n of sampling minutes (for sampling_intensity)
-  # left_join(ss_xy_abmiRegen_df)%>%distinct()%>%
-  # left_join(spatial_cov, by=c("SS", "cas_id", "survey_year"))
-  left_join(ss_xy_harvest_df)
-bd_cov<-bd_cov%>%
-  # add timelag columns
-  mutate(ss_dst_timelag=survey_year-round(dist_yr_1, 0))%>%
-  mutate(ss_dst_timelag_nbr=survey_year-round(yod, 0))%>%
-  mutate(dist_date_dif=ss_dst_timelag_nbr-ss_dst_timelag)
-
-
-
-bd_cov<-bd_community%>%
-  left_join(gee_landcover, by = c("SS", "survey_year"))%>%
-# %>%
-  left_join(ss_xy_harvest_df)%>%
-  # select(-uniquID)%>%
-  left_join(finalFullTable3)
-distinct()#30011
-
-test2<-test%>%
-  filter(!is.na(HFI_ID))%>%
-  # dplyr::select(-SS)%>%
-#   dplyr::select(-survey_year)%>%
-    # dplyr::select(-HFI_ID)%>%
-  # dplyr::select(-YEAR)%>%
-  # dplyr::select(-n_count)%>%#x
-  # dplyr::select(-MAXDUR)%>%#x
-  # dplyr::select(-MAXDIS)%>%#x
-  dplyr::select(-x)%>%
-  dplyr::select(-y)%>%
-  dplyr::select(-surveyType)%>%
-  dplyr::select(-richness)%>%
-  dplyr::select(-menhIndx)%>%
-  dplyr::select(-margIndx)%>%
-  dplyr::select(-shan)%>%
-  dplyr::select(-brill)%>%
-  dplyr::select(-simp)%>%
-  dplyr::select(-pilou)%>%
-  dplyr::select(-hill)%>%
-  dplyr::select(-nbsp)%>%
-  dplyr::select(-sing.sp)%>%
-  dplyr::select(-FRic)%>%
-  dplyr::select(-qual.FRic)%>%
-  dplyr::select(-FEve)%>%
-  dplyr::select(-FDiv)%>%
-  dplyr::select(-FDis)%>%
-  dplyr::select(-RaoQ)%>%
-  dplyr::select(-Broadleaf)%>%
-  dplyr::select(-Bryoids)%>%
-  dplyr::select(-Coniferous)%>%
-  dplyr::select(-Exposed_Barren_land)%>%
-  dplyr::select(-Herbs)%>%
-  dplyr::select(-Mixedwood)%>%
-  dplyr::select(-Rock_Rubble)%>%
-  dplyr::select(-Shrubs)%>%
-  dplyr::select(-Snow_Ice)%>%
-  dplyr::select(-Unclassified)%>%
-  dplyr::select(-Water)%>%
-  dplyr::select(-Wetland)%>%
-  dplyr::select(-"Wetland-treed")%>%
-  dplyr::select(-canopy_height)%>%
-  dplyr::select(-canopy_standard_deviation)%>%
-  dplyr::select(-lon)%>%
-  dplyr::select(-lat)%>%
-  dplyr::select(-dist_to_edge)%>%
-  dplyr::select(-cas_id)%>%
-  dplyr::select(-dist_1)%>%
-  dplyr::select(-dist_yr_1)%>%
-  dplyr::select(-dist_ext_upper_1)%>%
-  dplyr::select(-dist_2)%>%
-  dplyr::select(-dist_yr_2)%>% #30359
-  dplyr::select(-dist_ext_upper_2)%>% #30355
-  dplyr::select(-dist_1_2_diff)%>%
-
-  dplyr::select(-Mdfr_Yr)%>%
-  dplyr::select(-perimeter)%>%
-  dplyr::select(-area)%>%
-  dplyr::select(-pa_ratio)%>% #30355 #6887
-  # dplyr::select(-preDistMean_mean)%>% #303055
-  dplyr::select(-yod_stdev)%>%
-  dplyr::select(-eocYr_mean)%>%
-  # dplyr::select(-totDistb_mean)%>%#303055
-  # dplyr::select(-relDistbVal_mean)%>% #30007 6539
-  dplyr::select(-sizeConf)%>%
-  dplyr::select(-availPixConf)%>%
-  dplyr::select(-contgPixConf)%>%
-  dplyr::select(-yodConf)%>%
-  dplyr::select(-t2regenConf)%>%
-  dplyr::select(-distbConf)%>%
-  dplyr::select(-regenConf)%>%
-  dplyr::select(-y2r80Conf)%>%
-  dplyr::select(-reg5yrConf)%>%
-  dplyr::select(-sumConf)%>%#30007
-  distinct()
-
-30359
-
-29683
-
-
-6887
-
-%>%
-  filter(SS=="AM-403-NW"&survey_year==2014)%>%
-  distinct()
-
-
-%>%
-
-%>%
-  # distinct()
-
-`%>%
+  mutate(sampling_intensity=MAXDUR*n_count)%>%
   rename_all(funs(stringr::str_replace_all(., "_mean", '')))%>%
-  mutate(NBR_dist_YEAR=round(yod))
-
-%>%
+  mutate(NBR_yod=round(yod))%>%
   mutate(ss_dst_timelag=survey_year-round(dist_yr_1, 0))%>%
-  mutate(ss_dst_timelag_nbr=survey_year-round(yod, 0))%>%
-  mutate(dist_date_dif=ss_dst_timelag_nbr-ss_dst_timelag)
-
-
-
-
-
-finalFullTable4<-finalFullTable3
-  # dplyr::select(c(HFI_ID, YEAR, SS, preDistMean_mean))
-data_round1 <- data.frame(lapply(finalFullTable4,    # Using Base R functions
-                                 function(x) if(is.numeric(x)) round(x, 1) else x))
-finalFullTable4 <- finalFullTable3 %>%                   # Using dplyr functions
-  mutate_if(is.numeric,
-            round,
-            digits = 3)%>%  
-  select(-c("preDistMean_mean":"PERC_MULTIDISTB"))%>%
-  distinct()
+  mutate(ss_dst_timelag_nbr=survey_year-round(NBR_yod, 0))%>%
+  mutate(ss_dst_timelag=survey_year-round(dist_yr_1, 0))%>%
+  mutate(dist_date_dif=ss_dst_timelag_nbr-ss_dst_timelag)%>%
+  filter(!is.na(preDistMean)) #for low confidence NBR yod use cas-fri yod %>%
   
+save(bd_cov, file=paste0("0_data/manual/for_models/bd_cov_", Sys.Date(), ".rData"))
 
-distinct()
-  
-  
-  
-  select(-c("SS", "HFI_ID", "FEATURE", "Mdfr_Yr", "SECTOR_", "YEAR":"yrTo100_mean"))%>%
-  distinct()
- 
-test<-ss_xy_harvest_df%>%
-  left_join(finalFullTable4)%>%
-  filter(SS=="CL:CC-3:5" & survey_year==1995)%>%
-  distinct()
-
-
-
-
-
-## add sampling intensity column
-# bd_cov<-bd_cov%>%
-#   group_by(SS, survey_year)%>%
-#   mutate(n_samples=n())
-
-# save(bd_cov, file=paste0("0_data/manual/for_models/bd_cov.rData", Sys.Date(), ".rData")
-bd_cov_2<-bd_cov
-save(bd_cov_2, file=paste0("0_data/manual/for_models/bd_cov_2_", Sys.Date(), ".rData"))
-
-load("0_data/manual/for_models/bd_cov_2_2023-03-08.rData")
-
-###filter  
-# %>%
-#   filter(!is.na(ss_dst_timelag))
+load("0_data/manual/for_models/bd_cov_2023-03-16.rData")
 ```
 
-Filter data
-```{r eval=FALSE}
-
-bd_cov_f<-bd_cov_2%>%
-  # filter( dist_1=="CO" & is.na(dist_2))
-filter( dist_1=="CO" & is.na(dist_2) & ss_dst_timelag_nbr>0)
-
-# filter(is.na(dist_2))  
-```
-
-Scale data
+## Clean data {-}
 
 ```{r eval=FALSE}
 
-p1<-bd_cov_f%>%
+#Keep only relevant columns
+bd_cov_2<-bd_cov%>%
+  dplyr::select(SS, HFI_ID, survey_year,YEAR,  
+  NBR_yod, ss_dst_timelag_nbr,  sampling_intensity, surveyType, richness, menhIndx, margIndx,
+  shan, brill, simp, 
+  pilou, hill, nbsp, 
+  sing.sp, FRic, qual.FRic, 
+  FEve, FDiv, FDis, 
+  RaoQ, Broadleaf, Bryoids, 
+  Coniferous, Exposed_Barren_land, Herbs, 
+  Mixedwood, Rock_Rubble, Shrubs, 
+  Snow_Ice, Unclassified, Water, 
+  Wetland, "Wetland-treed", canopy_height, 
+  canopy_standard_deviation, lat, 
+  dist_to_edge,
+  perimeter, area, 
+  pa_ratio, preDistMean, 
+  totDistb, relDistbVal, yodConf,  sumConf, flag_pixels)%>%
   rename(Wetland_treed="Wetland-treed")%>%
-  dplyr::select(SS, cas_id, survey_year, sampling_intensity, richness, menhIndx, margIndx, shan, brill, simp, pilou, hill, FRic, qual.FRic, FEve, FDiv, FDis, RaoQ, Shape_Area, PA_ratio, ss_dst_timelag, ss_dst_timelag_nbr,dist_to_edge, dNBR, RdNBR, dNBR_recovery, NBR_survey, dNBR_perc, dist_ext_upper_1, Coniferous,Exposed_Barren_land, Herbs, Mixedwood, Shrubs,  Water, Wetland, Wetland_treed,
-canopy_height, canopy_standard_deviation,
-lat) %>%
-  distinct()
+  distinct()%>% 
+  # keep the greates sampling intensity per station
+  group_by(SS, survey_year) %>% 
+  rename(c(dNBR=totDistb, RdNBR=relDistbVal))%>%
+  mutate(dNBR_perc=dNBR/preDistMean)%>%
+  dplyr::select(-preDistMean)%>%
+  top_n(1, sampling_intensity)%>%
+  ungroup()
 
-# %>%
-#   na.omit()
+load("0_data/manual/for_models/bd_cov_2023-03-16.rData")
 
-# d3$dist_cont<-as.character(d3$dist_ext_upper_1)
-# d3$dist_cont<-d3$dist_cont
-# 
-# d3$treatment<-paste(d3$dist_ext_upper_1, d3$ss_dst_timelag_range, sep="__")
-# d3$treatment<-as.factor(d3$treatment)
+bd_cov_processed<-bd_cov_2
 
+save(bd_cov_processed, file=paste0("0_data/manual/for_models/bd_cov_processed_", Sys.Date(), ".rData"))
+
+load("0_data/manual/for_models/bd_cov_processed_2023-03-16.rData")
+```
+
+## Scale data {-}
+
+```{r eval=FALSE}
+p1<-bd_cov_2
 # reclassify columns 
 ## check classes
 lapply(p1,class)
 
-# turn survey year into a categorical variable
-p1$dist_to_edge<-as.numeric(p1$dist_to_edge)
-
 #Convert character variables to factors
-p2<- cbind(p1[1:2],as.data.frame(unclass(p1[c(3:ncol(p1))]),                 
-                       stringsAsFactors = TRUE))
+p2<- as.data.frame(unclass(p1),                 
+                       stringsAsFactors = TRUE)
+p2$dist_to_edge<-as.numeric(p2$dist_to_edge)
+
+lapply(p2,class)
 
 # scale all numeric columns
 p3<- p2%>%
   ungroup()%>%
-   mutate(across(-c(SS:RaoQ,dist_ext_upper_1), scale))
+   mutate(across(-c(SS:RaoQ,"yodConf","sumConf", "flag_pixels"), scale))
 
 # check classes
 lapply(p3, class)
 
-# p2$lat<-scale(p2$lat, center = TRUE, scale = TRUE)
+bd_cov_processed_scaled<-p3
 
+save(bd_cov_processed_scaled, file=paste0("0_data/manual/for_models/bd_cov_processed_scaled_", Sys.Date(), ".rData"))
 
-# # scale CAS-FRI predictors
-# p2$dist_to_edge<-scale(p2$dist_to_edge, center = TRUE, scale = TRUE)
-# p2$Shape_Area<-scale(p2$Shape_Area , center = TRUE, scale = TRUE)
-# p2$PercentConif<-scale(p2$PercentConif, center = TRUE, scale = TRUE)
-# p2$PA_ratio<-scale(p2$PA_ratio, center = TRUE, scale = TRUE)
-# p2$PercentDecid<-scale(p2$PercentDecid, center = TRUE, scale = TRUE)
-# p2$ss_dst_timelag<-scale(p2$ss_dst_timelag, center = TRUE, scale = TRUE)
-# p2$species_per_1<-scale(p2$species_per_1, center = TRUE, scale = TRUE)
-# 
-# #scale NBR
-# p2$dNBR<-scale(p2$dNBR, center=TRUE, scale=TRUE)
-# p2$RdNBR<-scale(p2$RdNBR, center=TRUE, scale=TRUE)
-# p2$dNBR_recovery<-scale(p2$dNBR_recovery, center=TRUE, scale=TRUE)
-# p2$NBR_survey<-scale(p2$NBR_survey, center=TRUE, scale=TRUE)
-# p2$dNBR_perc<-scale(p2$dNBR_perc, center=TRUE, scale=TRUE)
-# p2$ss_dst_timelag_NBR<-scale(p2$ss_dst_timelag_NBR, center = TRUE, scale = TRUE)
-# 
-
-d<-p3
-
-save(d, file=paste0("0_data/manual/for_models/bd_cov_processed_", Sys.Date(), ".rData"))
-
-load("0_data/manual/for_models/bd_cov_processed_2023-03-09.rData")
+load("0_data/manual/for_models/bd_cov_processed_scaled_2023-03-16.rData")
 ```
+
+## Filter {-}
+```{r eval=FALSE}
+load("0_data/manual/for_models/bd_cov_processed_scaled_2023-03-16.rData")
+
+# filter based on NBR confidence scores
+bd_cov_processed_scaled_filtered<-bd_cov_processed_scaled%>%
+  filter(survey_year>NBR_yod)%>%#3404
+  filter(flag_pixels=="n")%>%
+  filter(yodConf>3)
+
+save(bd_cov_processed_scaled_filtered, file=paste0("0_data/manual/for_models/bd_cov_processed_scaled_filtered_", Sys.Date(), ".rData"))
+
+load("0_data/manual/for_models/bd_cov_processed_scaled_filtered_2023-03-16.rData")
+```
+
 
 
 
