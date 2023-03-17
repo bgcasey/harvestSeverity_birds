@@ -8,6 +8,8 @@ knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```{r eval=FALSE}
 
 library(dplyr)
+# tests asf adfgvldsf'bfgsb
+# bbsdfbgsfbnnbg
 
 # GEE landcover
 load("0_data/manual/gee_landcover.rData")
