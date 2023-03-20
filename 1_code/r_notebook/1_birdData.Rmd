@@ -36,6 +36,10 @@ b$SPECIES[b$SPECIES == "MYWA"] <- "YRWA"
 b<-aggregate(. ~SS+DATE+TIME+MAXDUR+MAXDIS+x+y+surveyType+SPECIES+source, b, sum)
 
 b$DATE<-as.Date(b$DATE)
+
+# convert MAXDUR from minutes to seconds
+b$MAXDUR<-b$MAXDUR*60
+
 # # change data class where needed. Need to match the classes of the columns in the other bird dataframes to merge.
 # b$MAXDIS<-as.character(b$MAXDIS)
 ```
@@ -225,6 +229,8 @@ bd_a<-bind_rows(b, w_f)
 #reorder columns
 bd_a<-bd_a[c("SS","x", "y", "DATE", "TIME", "MAXDUR", "MAXDIS", "surveyType", "source", "SPECIES", "ABUND")]
 
+
+
 save(bd_a, file = paste0("0_data/manual/bird/bd_a_", Sys.Date(), ".rData"))
 ```
 
@@ -350,7 +356,7 @@ x<-bd_wide
 
 # x$DATE<-as.Date(x$DATE)
 x$survey_year<-format(as.Date(x$DATE, format="%d/%m/%Y"),"%Y")
-x<-x[-c(2:3, 5:11)]
+x<-x[-c(2:5, 7:11)]
 x<-aggregate(. ~SS+survey_year, x, sum)
 
 z<-x[3:ncol(x)]
@@ -423,7 +429,7 @@ save(bd_div, file=paste0("0_data/manual/bird/bd_div_", Sys.Date(), ".rData"))
 Functional traits were extracted from [@EltonTraits2021]
 
 ```{r eval=FALSE}
-load("0_data/manual/bird/bd_traits_full_2023-02-10.rData")
+load("0_data/manual/bird/bd_traits_full_2023-03-20.rData")
 
 # Keep only traits of interest
 
@@ -472,6 +478,9 @@ save(bd_funcDiv, file=paste0("0_data/manual/bird/bd_FuncDiv_", Sys.Date(), ".rDa
 
 Combine all diversity metrics into single dataframe
 ```{r}
+bd_div$survey_year<-as.numeric(bd_div$survey_year)
+bd_funcDiv$survey_year<-as.numeric(bd_funcDiv$survey_year)
+
 bd_community<-bd_wide%>%
   dplyr::select(c(SS, survey_year:surveyType))%>%
   distinct()%>%
