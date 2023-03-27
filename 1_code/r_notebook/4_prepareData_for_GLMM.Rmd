@@ -21,7 +21,7 @@ load("0_data/manual/spatial/ss_xy_harvest_df_2023-03-16.rData")
 
 # Bird community
 load("0_data/manual/bird/bd_community_2023-02-10.rData")
-
+load("0_data/manual/bird/bd_community_2023-03-20.rData")
 # NBR from ABMI polygons
 load("0_data/manual/gee_tables/finalFullTable_flag.rData")
 
@@ -37,7 +37,7 @@ bd_cov<-bd_community%>%
   distinct()%>% #29989
   left_join(ss_xy_harvest_df)%>% #30057
   left_join(nbr_flagData)%>% #30057
-  dplyr::select(-c(x, y))%>%
+  # dplyr::select(-c(x, y))%>%
   mutate(sampling_intensity=MAXDUR*n_count)%>%
   rename_all(funs(stringr::str_replace_all(., "_mean", '')))%>%
   mutate(NBR_yod=round(yod))%>%
@@ -49,7 +49,7 @@ bd_cov<-bd_community%>%
   
 save(bd_cov, file=paste0("0_data/manual/for_models/bd_cov_", Sys.Date(), ".rData"))
 
-load("0_data/manual/for_models/bd_cov_2023-03-16.rData")
+load("0_data/manual/for_models/bd_cov_2023-03-20.rData")
 ```
 
 ## Clean data {-}
@@ -59,7 +59,7 @@ load("0_data/manual/for_models/bd_cov_2023-03-16.rData")
 #Keep only relevant columns
 bd_cov_2<-bd_cov%>%
   dplyr::select(SS, HFI_ID, survey_year,YEAR,  
-  NBR_yod, ss_dst_timelag_nbr,  sampling_intensity, surveyType, richness, menhIndx, margIndx,
+  NBR_yod, ss_dst_timelag_nbr, MAXDUR, n_count, sampling_intensity, surveyType, richness, menhIndx, margIndx,
   shan, brill, simp, 
   pilou, hill, nbsp, 
   sing.sp, FRic, qual.FRic, 
@@ -82,37 +82,45 @@ bd_cov_2<-bd_cov%>%
   mutate(dNBR_perc=dNBR/preDistMean)%>%
   dplyr::select(-preDistMean)%>%
   top_n(1, sampling_intensity)%>%
-  ungroup()
-
-load("0_data/manual/for_models/bd_cov_2023-03-16.rData")
-
+  ungroup()%>%
+  mutate(dNBR_perc_flag = ifelse((dNBR_perc< mean(dNBR_perc)+ (2*sd(dNBR_perc) ) & dNBR_perc >mean(dNBR_perc)- (2*sd(dNBR_perc) )),
+"n", "y"))%>%
+  mutate(RdNBR_flag = ifelse((RdNBR< mean(RdNBR)+ (2*sd(RdNBR) ) & RdNBR >mean(RdNBR)- (2*sd(RdNBR) )),
+"n", "y"))
+#   mutate(dNBR_perc_flag = ifelse((dNBR_perc< mean(bd_cov_2$dNBR_perc)+ (2*sd(bd_cov_2$dNBR_perc) ) & dNBR_perc >mean(bd_cov_2$dNBR_perc)- (2*sd(bd_cov_2$dNBR_perc) )),
+# "n", "y"))%>%
+#    mutate(RdNBR_flag = ifelse((RdNBR< mean(bd_cov_2$RdNBR)+ (2*sd(bd_cov_2$RdNBR) ) & RdNBR >mean(bd_cov_2$RdNBR)- (2*sd(bd_cov_2$RdNBR) )),
+# "n", "y"))
+#   
+  
 bd_cov_processed<-bd_cov_2
 
 save(bd_cov_processed, file=paste0("0_data/manual/for_models/bd_cov_processed_", Sys.Date(), ".rData"))
 
-load("0_data/manual/for_models/bd_cov_processed_2023-03-16.rData")
+load("0_data/manual/for_models/bd_cov_processed_2023-03-20.rData")
 ```
 
 ## Scale data {-}
 
 ```{r eval=FALSE}
-p1<-bd_cov_2
+p1<-bd_cov_processed
 # reclassify columns 
 ## check classes
 lapply(p1,class)
 
 #Convert character variables to factors
+p1$dist_to_edge<-as.numeric(p1$dist_to_edge)
 p2<- as.data.frame(unclass(p1),                 
                        stringsAsFactors = TRUE)
-p2$dist_to_edge<-as.numeric(p2$dist_to_edge)
+
 
 lapply(p2,class)
 
 # scale all numeric columns
 p3<- p2%>%
   ungroup()%>%
-   mutate(across(-c(SS:RaoQ,"yodConf","sumConf", "flag_pixels"), scale))
-
+   mutate(across(-c(SS:NBR_yod, MAXDUR:RaoQ,"yodConf","sumConf", "flag_pixels", "dNBR_perc_flag", "RdNBR_flag"), scale))
+ 
 # check classes
 lapply(p3, class)
 
@@ -120,22 +128,27 @@ bd_cov_processed_scaled<-p3
 
 save(bd_cov_processed_scaled, file=paste0("0_data/manual/for_models/bd_cov_processed_scaled_", Sys.Date(), ".rData"))
 
-load("0_data/manual/for_models/bd_cov_processed_scaled_2023-03-16.rData")
+load("0_data/manual/for_models/bd_cov_processed_scaled_2023-03-20.rData")
 ```
 
 ## Filter {-}
 ```{r eval=FALSE}
-load("0_data/manual/for_models/bd_cov_processed_scaled_2023-03-16.rData")
+load("0_data/manual/for_models/bd_cov_processed_scaled_2023-03-20.rData")
 
 # filter based on NBR confidence scores
 bd_cov_processed_scaled_filtered<-bd_cov_processed_scaled%>%
   filter(survey_year>NBR_yod)%>%#3404
   filter(flag_pixels=="n")%>%
-  filter(yodConf>3)
+  filter(yodConf>3)%>% #2343
+  filter(dNBR_perc_flag=="n")%>%
+  filter(RdNBR_flag=="n")%>%#2212
+  #remove sampling intensity outliers%>%
+  filter(n_count<10)#2168
+  # filter(n_count<=5)#2082
 
 save(bd_cov_processed_scaled_filtered, file=paste0("0_data/manual/for_models/bd_cov_processed_scaled_filtered_", Sys.Date(), ".rData"))
 
-load("0_data/manual/for_models/bd_cov_processed_scaled_filtered_2023-03-16.rData")
+load("0_data/manual/for_models/bd_cov_processed_scaled_filtered_2023-03-20.rData")
 ```
 
 
