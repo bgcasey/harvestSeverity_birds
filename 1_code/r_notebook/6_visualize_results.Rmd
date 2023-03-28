@@ -1,0 +1,139 @@
+```{r setup, include=FALSE, cache=FALSE}
+#Set root directory to R project root
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+
+```{css, echo=FALSE}
+# set max height of code chunks using the following css styling
+
+pre {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+pre[class] {
+  max-height: 500px;
+}
+```
+
+```{r}
+pred <- list.files("3_output/model_predictions", pattern="*.rData", full.names=TRUE)
+lapply(pred, load,.GlobalEnv)
+
+pred_df<-rbind(pred_FDis_no_off, pred_FDiv_no_off, pred_FEve_no_off, pred_FRic_no_off, pred_rich_no_off, pred_shan_no_off)
+  
+gg1 <- (ggplot(pred_df)
+  + aes(timelag, predicted, ymin = conf.low, ymax = conf.high,
+        colour  = factor(g))
+  +  xlim(0, 25)
+ # + scale_color_manual(values = c('#c6dbef','#9ecae1','#6baed6','#4292c6','#2171b5','#08519c','#08306b', '#08256b', '#08256f'))
+ 
+  + scale_colour_viridis_d(option = "viridis")
+  # + geom_line()
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+  + stat_smooth(method = "lm",
+                formula = y ~ poly(x, 3),
+                se = TRUE, 
+                size=.3)
+  + facet_wrap(~response, scales = "free",ncol=2)
+  +labs(color="NBR disturbance (%)") 
+  + guides(color=guide_legend(override.aes=list(fill=NA))) ## to make legend background white while using geomsmooth confidenence limits
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+  +   theme(panel.background = element_blank(),
+          text = element_text(size=10, family="LMRoman10-Regular"),
+          axis.ticks=element_blank(),
+          #strip.background =element_rect(fill="white"),
+          panel.border = element_rect(color = "black", fill = NA, size = .2),
+          axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
+           axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+          #panel.background = element_rect(fill="white"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          strip.background =element_rect(fill="white"),
+          legend.key = element_rect(fill = "white"),
+          strip.text = element_text(family="LMRoman10-Italic"))
+)
+gg1
+
+ggsave(gg1, filename=paste0("3_output/figures/time_nbrDist_interaction_all_noOff.png"), width =6, height=6)
+
+```
+
+```{r eval=FALSE}
+pred_df<-rbind(pred_rich, pred_FDis, pred_FDiv, pred_FEve, pred_FRic, pred_shan)
+  
+gg1 <- (ggplot(pred_df)
+  + aes(timelag, predicted, ymin = conf.low, ymax = conf.high,
+        colour  = factor(g))
+  +  xlim(0, 25)
+ # + scale_color_manual(values = c('#c6dbef','#9ecae1','#6baed6','#4292c6','#2171b5','#08519c','#08306b', '#08256b', '#08256f'))
+ 
+  + scale_colour_viridis_d(option = "viridis")
+  # + geom_line()
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+  + stat_smooth(method = "lm",
+                formula = y ~ poly(x, 3),
+                se = TRUE, 
+                size=.3)
+  + facet_wrap(~response, scales = "free",ncol=2)
+  +labs(color="NBR disturbance (%)") 
+  + guides(color=guide_legend(override.aes=list(fill=NA))) ## to make legend background white while using geomsmooth confidenence limits
+  # + geom_ribbon(colour = NA, alpha = 0.3)
+  +   theme(panel.background = element_blank(),
+          text = element_text(size=10, family="LMRoman10-Regular"),
+          axis.ticks=element_blank(),
+          #strip.background =element_rect(fill="white"),
+          panel.border = element_rect(color = "black", fill = NA, size = .2),
+          axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
+           axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+          #panel.background = element_rect(fill="white"),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          strip.background =element_rect(fill="white"),
+          legend.key = element_rect(fill = "white"),
+          strip.text = element_text(family="LMRoman10-Italic"))
+)
+gg1
+
+# ggsave(gg1, filename=paste0("3_output/figures/time_nbrDist_interaction_all.png"), width =6, height=6)
+```
+
+
+
+
+
+```{r}
+
+
+load("3_output/shan_m1.rData")
+load("3_output/richness_m1.rData")
+load("3_output/FEve_m1.rData")
+load("3_output/FDiv_m1.rData")
+load("3_output/FRic_m1.rData")
+load("3_output/FDis_m1.rData")
+
+
+jtools::export_summs(shan_m1, FEve_m1,  exp=FALSE, set_caption="test", to.file = "xlsx", digits=3, error_pos = "below", 
+                     
+#                      model.names=c("Setophaga ruticilla",]
+# "Setophaga virens",
+# "Geothlypis philadelphia",]
+# "Catharus ustulatus",
+# "Troglodytes hiemalis",
+# "Zonotrichia albicollis"),
+
+note = "{stars};   SE statistics in parenthesis.",file.name = "3_output/tables/models_stats.xlsx")   
+
+#  
+# "American Redstart",
+# "Black-throated Green Warbler",
+# "Mourning Warbler",
+# "Swainson's Thrush",
+# "Winter Wren",
+# "White-throated Sparrow"                                                                                                                                             
+                                                  
+library(webshot)
+webshot("3_output/tables/spp_models_stats_00.html", "3_output/tables/spp_models_stats_00.png")
+```
+
