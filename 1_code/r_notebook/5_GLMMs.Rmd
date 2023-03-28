@@ -225,8 +225,11 @@ d_in_1<-MuMIn::dredge(in_1, extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(
 ### Global model {-}
 
 ```{r eval=FALSE}
-gm1<-lme4::glmer(richness ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + area + pa_ratio  +dist_to_edge + Coniferous +Exposed_Barren_land + Herbs + Mixedwood + Shrubs +  Water + Wetland + Wetland_treed +
-canopy_height + canopy_standard_deviation +
+# gm1<-lme4::glmer(richness ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + area + pa_ratio  +dist_to_edge + Coniferous +Exposed_Barren_land + Herbs + Mixedwood + Shrubs +  Water + Wetland + Wetland_treed +
+# canopy_height + canopy_standard_deviation +
+# lat + (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family=poisson, na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
+
+gm1<-lme4::glmer(richness ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + dist_to_edge + Coniferous +Exposed_Barren_land + Herbs + Mixedwood + Shrubs +  Water  + canopy_standard_deviation +
 lat + (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family=poisson, na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 richness_dredge<-MuMIn::dredge(gm1, fixed=c("poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc,2, raw=TRUE)", "offset(log(sampling_intensity))"), extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
@@ -245,7 +248,7 @@ save(richness_dredge_imp, file=paste0("2_pipeline/store/models/richness_dredge_i
 #top model
 #get list of variables in top models
 var<-#head(richness_dredge_sub,1)%>%
-  richness_dredge_sub[3,]%>%
+  richness_dredge_sub[1,]%>%
   as.data.frame()%>%
   dplyr::select(-c(r2.R2m,r2.R2c,df,logLik,AICc,delta,weight,"(Intercept)", "offset(log(sampling_intensity))"))%>%
   dplyr::select_if(~ !any(is.na(.)))%>%
@@ -253,12 +256,12 @@ var<-#head(richness_dredge_sub,1)%>%
   dplyr::select(-contains("ss_dst_timelag_nbr"))%>%
   colnames()
   
-richness_m1<-lme4::glmer(richness ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Coniferous +Exposed_Barren_land + Herbs + Shrubs +  Water + canopy_standard_deviation +
+richness_m1<-lme4::glmer(richness ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Exposed_Barren_land + Herbs + Shrubs +  Water + canopy_standard_deviation +
  (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family=poisson, na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 save(richness_m1, file="3_output/richness_m1.rData")
 
-richness_m1_noOffset<-lme4::glmer(richness ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Coniferous +Exposed_Barren_land + Herbs + Shrubs +  Water + canopy_standard_deviation +
+richness_m1_noOffset<-lme4::glmer(richness ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Exposed_Barren_land + Herbs + Shrubs +  Water + canopy_standard_deviation +
  (1|HFI_ID/survey_year), data=d, family=poisson, na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 save(richness_m1_noOffset, file="3_output/richness_m1_noOffset.rData")
@@ -283,14 +286,9 @@ ce_1 <- attr(d$ss_dst_timelag_nbr, 'scaled:center')
 sc_2 <- attr(d$dNBR_perc, 'scaled:scale')
 ce_2 <- attr(d$dNBR_perc, 'scaled:center')
 
-sc_1 <- attr(test1$ss_dst_timelag_nbr, 'scaled:scale')
-ce_1 <- attr(test1$ss_dst_timelag_nbr, 'scaled:center')
 
-sc_2 <- attr(test1$dNBR_perc, 'scaled:scale')
-ce_2 <- attr(test1$dNBR_perc, 'scaled:center')
 # make predictions from model using ggpredict
-library(ggeffects)
-dd2<-ggpredict(richness_m1_noOffset2, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+pred_rich_no_off<-ggpredict(richness_m1_noOffset, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
          as_tibble()%>%
   mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
     # mutate(dNBR_perc_us_us = as.numeric(group))%>%
@@ -304,9 +302,30 @@ dd2<-ggpredict(richness_m1_noOffset2, terms = c("ss_dst_timelag_nbr [all]","dNBR
                              ifelse((aa < .45 & aa > .35), 45,
                              ifelse((aa < .35 & aa > .25), 35,25
                           )))))))))%>%
-  filter(g>50)
+  mutate(response="Richness")
+  
 
-gg1 <- (ggplot(dd2)
+save(pred_rich_no_off, file="3_output/model_predictions/dd_rich_no_off.rData")
+
+pred_rich<-ggpredict(richness_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+         as_tibble()%>%
+  mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
+    # mutate(dNBR_perc_us_us = as.numeric(group))%>%
+  mutate(timelag = x* sc_1 + ce_1) %>%
+  mutate(g = ifelse((aa < 1 & aa > .95), 100,
+               ifelse((aa < .95 & aa > .85), 95,
+                   ifelse((aa < .85 & aa > .75), 85,
+                      ifelse((aa < .75 & aa > .65), 75,
+                      ifelse((aa < .65 & aa > .55), 65,
+                             ifelse((aa < .55 & aa > .45), 55,
+                             ifelse((aa < .45 & aa > .35), 45,
+                             ifelse((aa < .35 & aa > .25), 35,25
+                          )))))))))%>%
+  mutate(response="Richness")
+
+save(pred_rich, file="3_output/model_predictions/dd_rich.rData")
+
+gg1 <- (ggplot(pred_rich_no_off)
   + aes(timelag, predicted, ymin = conf.low, ymax = conf.high,
         colour  = factor(g))
   +  xlim(0, 25)
@@ -457,7 +476,6 @@ r2(in_1)
 gm1<-lme4::glmer(shan ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + dist_to_edge + Coniferous +Exposed_Barren_land + Herbs + Mixedwood + Shrubs +  Water  + canopy_standard_deviation +
 lat + (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
-summary(gm1)
 
 shan_dredge<-MuMIn::dredge(gm1, fixed=c("poly(dNBR_perc, 2, raw = TRUE):poly(ss_dst_timelag_nbr, 2, raw = TRUE)", "offset(log(sampling_intensity))"), extra = c(r2=function(x) round(r.squaredGLMM(x)[1,c(1,2)],3)))
 
@@ -477,7 +495,7 @@ save(shan_dredge_imp, file=paste0("2_pipeline/store/models/shan_dredge_imp_", Sy
 
 #get list of variables in top models
 var<-#head(shan_dredge_sub,1)%>%
-  shan_dredge_sub[2,]%>%
+  shan_dredge_sub[1,]%>%
   as.data.frame()%>%
   dplyr::select(-c(r2.R2m,r2.R2c,df,logLik,AICc,delta,weight,"(Intercept)", "offset(log(sampling_intensity))"))%>%
   dplyr::select_if(~ !any(is.na(.)))%>%
@@ -486,15 +504,11 @@ var<-#head(shan_dredge_sub,1)%>%
   colnames()
   
 
-shan_m1<-lme4::glmer(shan ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Coniferous +Exposed_Barren_land  +  Water  + canopy_standard_deviation + Mixedwood +
-lat + (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
-
-summary(shan_m1)
+shan_m1<-lme4::glmer(shan ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Shrubs +Exposed_Barren_land  +  Water  + canopy_standard_deviation +  (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 save(shan_m1, file="3_output/shan_m1.rData")
 
-shan_m1_noOffset<-lme4::glmer(shan ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Coniferous +Exposed_Barren_land  +  Water  + canopy_standard_deviation + Mixedwood +
-lat + (1|HFI_ID/survey_year), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
+shan_m1_noOffset<-lme4::glmer(shan ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Shrubs +Exposed_Barren_land  +  Water  + canopy_standard_deviation + (1|HFI_ID/survey_year), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 save(shan_m1_noOffset, file="3_output/shan_m1_noOffset.rData")
 ```
@@ -520,7 +534,7 @@ ce_2 <- attr(d$dNBR_perc, 'scaled:center')
 
 # make predictions from model using ggpredict
 
-dd2<-ggpredict(shan_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+pred_shan_no_off<-ggpredict(shan_m1_noOffset, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"),ci.lvl = 0.95 )%>%#, #condition = c(sampling_intensity = 1440))%>%
          as_tibble()%>%
   mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
     # mutate(dNBR_perc_us_us = as.numeric(group))%>%
@@ -534,9 +548,32 @@ dd2<-ggpredict(shan_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))
                              ifelse((aa < .45 & aa > .35), 45,
                              ifelse((aa < .35 & aa > .25), 35,25
                           )))))))))%>%
-  filter(g>50)
+  mutate(response="Shannon diversity")
+  
 
-gg1 <- (ggplot(dd2)
+save(pred_shan_no_off, file="3_output/model_predictions/pred_shan_no_off.rData")
+
+pred_shan<-ggpredict(shan_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"),ci.lvl = 0.95 )%>%#, #condition = c(sampling_intensity = 1440))%>%
+         as_tibble()%>%
+  mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
+    # mutate(dNBR_perc_us_us = as.numeric(group))%>%
+  mutate(timelag = x* sc_1 + ce_1) %>%
+  mutate(g = ifelse((aa < 1 & aa > .95), 100,
+               ifelse((aa < .95 & aa > .85), 95,
+                   ifelse((aa < .85 & aa > .75), 85,
+                      ifelse((aa < .75 & aa > .65), 75,
+                      ifelse((aa < .65 & aa > .55), 65,
+                             ifelse((aa < .55 & aa > .45), 55,
+                             ifelse((aa < .45 & aa > .35), 45,
+                             ifelse((aa < .35 & aa > .25), 35,25
+                          )))))))))%>%
+  mutate(response="Shannon diversity")
+  
+
+save(pred_shan, file="3_output/model_predictions/pred_shan.rData")
+
+
+gg1 <- (ggplot(pred_shan_no_off)
   + aes(timelag, predicted, ymin = conf.low, ymax = conf.high,
         colour  = factor(g))
   +  xlim(0, 25)
@@ -707,7 +744,7 @@ save(FRic_dredge_imp, file=paste0("2_pipeline/store/models/FRic_dredge_imp_", Sy
 
 #get list of variables in top models
 var<-#head(FRic_dredge_sub,1)%>%
-  FRic_dredge_sub[8,]%>%
+  FRic_dredge_sub[5,]%>%
   as.data.frame()%>%
   dplyr::select(-c(r2.R2m,r2.R2c,df,logLik,AICc,delta,weight,"(Intercept)", "offset(log(sampling_intensity))"))%>%
   dplyr::select_if(~ !any(is.na(.)))%>%
@@ -715,11 +752,11 @@ var<-#head(FRic_dredge_sub,1)%>%
   dplyr::select(-contains("ss_dst_timelag_nbr"))%>%
   colnames()
 
-FRic_m1<-lme4::glmer(FRic ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) +  dist_to_edge+ Shrubs +Herbs + Mixedwood  +  Water  +  (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
+FRic_m1<-lme4::glmer(FRic ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) +   dist_to_edge+Herbs + Mixedwood  +  Water  + lat+  Shrubs+ (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 save(FRic_m1, file="3_output/FRic_m1.rData")
 
-FRic_m1_noOffset<-lme4::glmer(FRic ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) +  dist_to_edge+ Shrubs +Herbs + Mixedwood  +  Water  +  (1|HFI_ID/survey_year), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
+FRic_m1_noOffset<-lme4::glmer(FRic ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) +  dist_to_edge+Herbs + Mixedwood  +  Water  + lat+  Shrubs+ (1|HFI_ID/survey_year), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 save(FRic_m1_noOffset, file="3_output/FRic_m1_noOffset.rData")
 
@@ -746,7 +783,7 @@ ce_2 <- attr(d$dNBR_perc, 'scaled:center')
 
 # make predictions from model using ggpredict
 
-dd2<-ggpredict(FRic_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+pred_FRic_no_off<-ggpredict(FRic_m1_noOffset, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
          as_tibble()%>%
   mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
     # mutate(dNBR_perc_us_us = as.numeric(group))%>%
@@ -760,7 +797,31 @@ dd2<-ggpredict(FRic_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))
                              ifelse((aa < .45 & aa > .35), 45,
                              ifelse((aa < .35 & aa > .25), 35,25
                           )))))))))%>%
-  filter(g>50)
+  mutate(response="Functional Richness")
+  
+
+save(pred_FRic_no_off, file="3_output/model_predictions/pred_FRic_no_off.rData")
+
+
+pred_FRic<-ggpredict(FRic_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+         as_tibble()%>%
+  mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
+    # mutate(dNBR_perc_us_us = as.numeric(group))%>%
+  mutate(timelag = x* sc_1 + ce_1) %>%
+  mutate(g = ifelse((aa < 1 & aa > .95), 100,
+               ifelse((aa < .95 & aa > .85), 95,
+                   ifelse((aa < .85 & aa > .75), 85,
+                      ifelse((aa < .75 & aa > .65), 75,
+                      ifelse((aa < .65 & aa > .55), 65,
+                             ifelse((aa < .55 & aa > .45), 55,
+                             ifelse((aa < .45 & aa > .35), 45,
+                             ifelse((aa < .35 & aa > .25), 35,25
+                          )))))))))%>%
+  mutate(response="Functional Richness")
+  
+
+save(pred_FRic, file="3_output/model_predictions/pred_FRic.rData")
+
 
 gg1 <- (ggplot(dd2)
   + aes(timelag, predicted, ymin = conf.low, ymax = conf.high,
@@ -933,7 +994,7 @@ save(FEve_dredge_imp, file=paste0("2_pipeline/store/models/FEve_dredge_imp_", Sy
 
 #top model
 #get list of variables in top models
-var<-head(FEve_dredge_sub,1)%>%
+var<-head(FEve_dredge_sub,2)%>%
   as.data.frame()%>%
   dplyr::select(-c(r2.R2m,r2.R2c,df,logLik,AICc,delta,weight,"(Intercept)", "offset(log(sampling_intensity))"))%>%
   dplyr::select_if(~ !any(is.na(.)))%>%
@@ -941,20 +1002,17 @@ var<-head(FEve_dredge_sub,1)%>%
   dplyr::select(-contains("ss_dst_timelag_nbr"))%>%
   colnames()
 
-FEve_m1<-lme4::glmer(FEve ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Coniferous + Mixedwood + Shrubs +  Water  + canopy_standard_deviation +
-lat + dist_to_edge + (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
+FEve_m1<-lme4::glmer(FEve ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Shrubs +  Water  + canopy_standard_deviation +
+lat + (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 summary(FEve_m1)
 
 save(FEve_m1, file="3_output/FEve_m1.rData")
 
-FEve_m1_noOffset<-lme4::glmer(FEve ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Coniferous + Mixedwood + Shrubs +  Water  + canopy_standard_deviation +
-lat + dist_to_edge + (1|HFI_ID/survey_year), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
+FEve_m1_noOffset<-lme4::glmer(FEve ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + Shrubs +  Water  + canopy_standard_deviation +
+lat + (1|HFI_ID/survey_year), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 save(FEve_m1_noOffset, file="3_output/FEve_m1_noOffset.rData")
-
-
-
 ```
 
 ### Diagnostic plots {-}
@@ -978,7 +1036,7 @@ ce_2 <- attr(d$dNBR_perc, 'scaled:center')
 
 # make predictions from model using ggpredict
 
-dd2<-ggpredict(FEve_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+pred_FEve_no_off<-ggpredict(FEve_m1_noOffset, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
          as_tibble()%>%
   mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
     # mutate(dNBR_perc_us_us = as.numeric(group))%>%
@@ -992,9 +1050,32 @@ dd2<-ggpredict(FEve_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))
                              ifelse((aa < .45 & aa > .35), 45,
                              ifelse((aa < .35 & aa > .25), 35,25
                           )))))))))%>%
-  filter(g>50)
+  mutate(response="Functional Evenness")
+  
 
-gg1 <- (ggplot(dd2)
+save(pred_FEve_no_off, file="3_output/model_predictions/pred_FEve_no_off.rData")
+
+pred_FEve<-ggpredict(FEve_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+         as_tibble()%>%
+  mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
+    # mutate(dNBR_perc_us_us = as.numeric(group))%>%
+  mutate(timelag = x* sc_1 + ce_1) %>%
+  mutate(g = ifelse((aa < 1 & aa > .95), 100,
+               ifelse((aa < .95 & aa > .85), 95,
+                   ifelse((aa < .85 & aa > .75), 85,
+                      ifelse((aa < .75 & aa > .65), 75,
+                      ifelse((aa < .65 & aa > .55), 65,
+                             ifelse((aa < .55 & aa > .45), 55,
+                             ifelse((aa < .45 & aa > .35), 45,
+                             ifelse((aa < .35 & aa > .25), 35,25
+                          )))))))))%>%
+  mutate(response="Functional Evenness")
+  
+
+save(pred_FEve, file="3_output/model_predictions/pred_FEve.rData")
+
+
+gg1 <- (ggplot(pred_FEve_no_off)
   + aes(timelag, predicted, ymin = conf.low, ymax = conf.high,
         colour  = factor(g))
   +  xlim(0, 25)
@@ -1167,7 +1248,7 @@ save(FDiv_dredge_imp, file=paste0("2_pipeline/store/models/FDiv_dredge_imp_", Sy
 #top model
 #get list of variables in top models
 var<-#head(FDiv_dredge_sub,1)%>%
-  FDiv_dredge_sub[8,]%>%
+  FDiv_dredge_sub[7,]%>%
   as.data.frame()%>%
   dplyr::select(-c(r2.R2m,r2.R2c,df,logLik,AICc,delta,weight,"(Intercept)", "offset(log(sampling_intensity))"))%>%
   dplyr::select_if(~ !any(is.na(.)))%>%
@@ -1175,14 +1256,13 @@ var<-#head(FDiv_dredge_sub,1)%>%
   dplyr::select(-contains("ss_dst_timelag_nbr"))%>%
   colnames()
 
-FDiv_m1<-lme4::glmer(FDiv ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + dist_to_edge + Coniferous  + Mixedwood + Shrubs + canopy_standard_deviation + (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
+FDiv_m1<-lme4::glmer(FDiv ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + dist_to_edge  + Shrubs + canopy_standard_deviation + Water+ (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 save(FDiv_m1, file="3_output/FDiv_m1.rData")
 
 FDiv_m1_noOffset<-lme4::glmer(FDiv ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + dist_to_edge + Coniferous  + Mixedwood + Shrubs + canopy_standard_deviation + (1|HFI_ID/survey_year), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 save(FDiv_m1_noOffset, file="3_output/FDiv_m1_noOffset.rData")
-
 
 ```
 
@@ -1207,7 +1287,7 @@ ce_2 <- attr(d$dNBR_perc, 'scaled:center')
 
 # make predictions from model using ggpredict
 
-dd2<-ggpredict(FDiv_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+pred_FDiv_no_off<-ggpredict(FDiv_m1_noOffset, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
          as_tibble()%>%
   mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
     # mutate(dNBR_perc_us_us = as.numeric(group))%>%
@@ -1221,9 +1301,31 @@ dd2<-ggpredict(FDiv_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))
                              ifelse((aa < .45 & aa > .35), 45,
                              ifelse((aa < .35 & aa > .25), 35,25
                           )))))))))%>%
-  filter(g>50)
+  mutate(response="Functional Divergence")
+  
 
-gg1 <- (ggplot(dd2)
+save(pred_FDiv_no_off, file="3_output/model_predictions/pred_FDiv_no_off.rData")
+
+pred_FDiv<-ggpredict(FDiv_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+         as_tibble()%>%
+  mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
+    # mutate(dNBR_perc_us_us = as.numeric(group))%>%
+  mutate(timelag = x* sc_1 + ce_1) %>%
+  mutate(g = ifelse((aa < 1 & aa > .95), 100,
+               ifelse((aa < .95 & aa > .85), 95,
+                   ifelse((aa < .85 & aa > .75), 85,
+                      ifelse((aa < .75 & aa > .65), 75,
+                      ifelse((aa < .65 & aa > .55), 65,
+                             ifelse((aa < .55 & aa > .45), 55,
+                             ifelse((aa < .45 & aa > .35), 45,
+                             ifelse((aa < .35 & aa > .25), 35,25
+                          )))))))))%>%
+  mutate(response="Functional Divergence")
+  
+
+save(pred_FDiv, file="3_output/model_predictions/pred_FDiv.rData")
+
+gg1 <- (ggplot(pred_FDiv_no_off)
   + aes(timelag, predicted, ymin = conf.low, ymax = conf.high,
         colour  = factor(g))
   +  xlim(0, 25)
@@ -1255,12 +1357,6 @@ gg1 <- (ggplot(dd2)
 gg1
 ggsave(gg1, filename=paste0("3_output/figures/time_nbrDist_FDiv.png"), width =7, height=4)
 ```
-
-
-
-
-
-
 
 
 
@@ -1395,7 +1491,7 @@ save(FDis_dredge_imp, file=paste0("2_pipeline/store/models/FDis_dredge_imp_", Sy
 #top model
 #get list of variables in top models
 var<-#head(FDis_dredge_sub,1)%>%
-  FDis_dredge_sub[8,]%>%
+  FDis_dredge_sub[2,]%>%
   as.data.frame()%>%
   dplyr::select(-c(r2.R2m,r2.R2c,df,logLik,AICc,delta,weight,"(Intercept)", "offset(log(sampling_intensity))"))%>%
   dplyr::select_if(~ !any(is.na(.)))%>%
@@ -1404,13 +1500,13 @@ var<-#head(FDis_dredge_sub,1)%>%
   colnames()
 
 
-FDis_m1<-lme4::glmer(FDis ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + dist_to_edge + Coniferous +Exposed_Barren_land + Herbs + lat+ Shrubs + Water + canopy_standard_deviation + (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
+FDis_m1<-lme4::glmer(FDis ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + dist_to_edge +Exposed_Barren_land + Shrubs + canopy_standard_deviation + (1|HFI_ID/survey_year)+ offset(log(sampling_intensity)), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
 save(FDis_m1, file="3_output/FDis_m1.rData")
 
-FDis_m1_noOffset<-lme4::glmer(FDis ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + dist_to_edge + Coniferous +Exposed_Barren_land + Herbs + lat+ Shrubs + Water + canopy_standard_deviation + (1|HFI_ID/survey_year), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
+FDis_m1_noOffset<-lme4::glmer(FDis ~  poly(ss_dst_timelag_nbr,2, raw=TRUE) * poly(dNBR_perc ,2, raw=TRUE) + dist_to_edge +Exposed_Barren_land + Shrubs + canopy_standard_deviation + (1|HFI_ID/survey_year), data=d, family = Gamma(link = log),  na.action = na.fail, control=glmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
 
-save(FDis_m1_noOffset, file="3_output/FDis_m1.rData_noOffset")
+save(FDis_m1_noOffset, file="3_output/FDis_m1.rData_noOffset.rData")
 
 ```
 
@@ -1435,7 +1531,7 @@ ce_2 <- attr(d$dNBR_perc, 'scaled:center')
 
 # make predictions from model using ggpredict
 
-dd2<-ggpredict(FDis_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+pred_FDis_no_off<-ggpredict(FDis_m1_noOffset, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
          as_tibble()%>%
   mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
     # mutate(dNBR_perc_us_us = as.numeric(group))%>%
@@ -1449,9 +1545,30 @@ dd2<-ggpredict(FDis_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))
                              ifelse((aa < .45 & aa > .35), 45,
                              ifelse((aa < .35 & aa > .25), 35,25
                           )))))))))%>%
-  filter(g>50)
+  mutate(response="Functional Dispersion")
+  
+save(pred_FDis_no_off, file="3_output/model_predictions/pred_FDis_no_off.rData")
 
-gg1 <- (ggplot(dd2)
+pred_FDis<-ggpredict(FDis_m1, terms = c("ss_dst_timelag_nbr [all]","dNBR_perc [all]"))%>%#, #condition = c(sampling_intensity = 1440))%>%
+         as_tibble()%>%
+  mutate(aa = as.numeric(as.character(group))* sc_2 + ce_2)%>%
+    # mutate(dNBR_perc_us_us = as.numeric(group))%>%
+  mutate(timelag = x* sc_1 + ce_1) %>%
+  mutate(g = ifelse((aa < 1 & aa > .95), 100,
+               ifelse((aa < .95 & aa > .85), 95,
+                   ifelse((aa < .85 & aa > .75), 85,
+                      ifelse((aa < .75 & aa > .65), 75,
+                      ifelse((aa < .65 & aa > .55), 65,
+                             ifelse((aa < .55 & aa > .45), 55,
+                             ifelse((aa < .45 & aa > .35), 45,
+                             ifelse((aa < .35 & aa > .25), 35,25
+                          )))))))))%>%
+  mutate(response="Functional Dispersion")
+  
+save(pred_FDis, file="3_output/model_predictions/pred_FDis.rData")
+
+
+gg1 <- (ggplot(pred_FDis_no_off)
   + aes(timelag, predicted, ymin = conf.low, ymax = conf.high,
         colour  = factor(g))
   +  xlim(0, 25)
