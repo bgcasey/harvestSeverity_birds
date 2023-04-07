@@ -151,6 +151,358 @@ save(bd_cov_processed_scaled_filtered, file=paste0("0_data/manual/for_models/bd_
 load("0_data/manual/for_models/bd_cov_processed_scaled_filtered_2023-03-20.rData")
 ```
 
+## Map filtered harvests and points {-}
+
+```{r}
+load("0_data/manual/spatial/bird/ss_xy.rData")
+
+# filter ss_xy locations
+sampled_ss<-ss_xy%>%
+  dplyr::semi_join(bd_cov_processed_scaled_filtered)%>%
+  select(-survey_year)%>%
+  distinct()%>%
+  st_transform(crs = 3400)
+
+# filter harvest polygons
+HFI<-st_read("0_data/manual/spatial/harvest/o18_HarvestAreas_HFI_2019_noHoles.shp")
+sampled_HFI<-st_filter(HFI, sampled_ss)
+```
+
+
+```{r eval=FALSE}
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(tmap)
+library(tmaptools)
+library(OpenStreetMap)
+library(stringr)
+library(grid)
+library(cowplot)
+library(ggplot2)
+
+#############################################   
+# find points to focus on for inset maps
+####################################################
+
+#cluster points
+library(sp)
+xy<-as_Spatial(sampled_ss)
+
+#distance threshold
+d=3000
+chc <- hclust(dist(data.frame(rownames=rownames(xy@data), x=coordinates(xy)[,1],
+              y=coordinates(xy)[,2])), method="complete")
+
+# Distance with a 40m threshold  
+chc.d10 <- cutree(chc, h=d) 
+
+# Join results to sp points
+xy@data <- data.frame(xy@data, Clust=chc.d10)
+xy<-st_as_sf(xy)
+
+# explore using filters
+xy_cl<-xy%>%
+  filter(str_detect(SS, "^CL"))
+ #    # filter(str_detect(SS, "ABCAWAWEST:56"))
+ #    # filter(Clust==30)#maybe
+ #  # filter(Clust==37)#maybe
+ #  #filter(Clust==51)#maybe
+ # filter(Clust==202)#maybe
+ #    # filter(str_detect(SS, "ABCAWAWEST:56"))
+ #    # filter(str_detect(SS, "ABCAWAWEST:56"))
+
+####################################################
+# Inset basemaps
+####################################################
+
+base<-read_osm(alberta, type="bing", minNumTiles = 10)
+# base<-read_osm(bb,zoom=NULL, type="nps")
+# library(GISTools)
+# gm_esri <- read_osm(bb, zoom=NULL, 'opencyclemap') # specify zoom
+# base<-basemap_raster(bb, map_service = "esri", map_type = "world_topo_map")
+# base<-basemap_raster(bb, map_service = "esri", map_type = "delorme_world_base_map")
+# base<-basemap_raster(bb, map_service = "osm", map_type = "hillshade")
+# osm_stamen
+
+# alberta<-st_transform(alberta,crs = st_crs(base))
+# base_crop<-st_crop(base, alberta)
+
+####################################################
+
+####################################################
+# Inset 1
+####################################################
+x_xy<-xy%>%
+# filter(Clust==202)
+filter(SS=="CL:F-001-2:1")
+sampled_HFI_x<-st_filter(HFI, x_xy)
+#create a bounding box around study area
+bb<-st_bbox(sampled_HFI_x)
+bb<-st_as_sfc(bb)
+bb<-st_as_sf(bb)
+#get length of bounding box
+bb_d<-bb %>%
+  st_cast('LINESTRING') %>%
+  st_length()/4
+
+# calculate centroid of bounding box
+midpoint1<-st_centroid(bb)
+# create buffer around centroid
+buf_round <- st_buffer(midpoint1, dist = bb_d*.75)
+# make a box
+box_buf <- st_bbox(buf_round) 
+
+#set viewport
+#Get aspect ratio of bounding box
+asp <- (box_buf$ymax - box_buf$ymin)/(box_buf$xmax - box_buf$xmin)
+w <- 0.38
+h <- asp * w
+vp_1 <- viewport(0.9, 0.25, width = w, height=h)
+
+box_buf_1 <-box_buf%>%
+  st_as_sfc() %>%
+  st_as_sf()
+
+base<-read_osm(box_buf_1, type="bing", minNumTiles = 10)
+
+#plot
+inset_1<-
+  tm_shape(base)+
+  tm_rgb()+ # to color the satelite basemap
+  tm_shape(sampled_HFI_x)+
+    tm_borders(lw=.5, col="red")+
+  tm_shape(x_xy)+
+    tm_symbols(shape=4, alpha = 1, size = .7, col = "black", border.lwd = 2)+
+  tm_grid(lines=FALSE, n.x=3, n.y=3, labels.rot=c(0, 90), labels.size=.3)+
+    tm_layout(frame="black")
+####################################################
+
+####################################################
+# Inset 2
+####################################################
+x_xy<-xy%>%
+ filter(str_detect(SS, "RETNO-3-3"))
+sampled_HFI_x<-st_filter(HFI, x_xy)
+#create a bounding box around study area
+bb<-st_bbox(sampled_HFI_x)
+bb<-st_as_sfc(bb)
+bb<-st_as_sf(bb)
+#get length of bounding box
+bb_d<-bb %>%
+  st_cast('LINESTRING') %>%
+  st_length()/4
+
+# calculate centroid of bounding box
+midpoint2<-st_centroid(bb)
+# create buffer around centroid
+buf_round <- st_buffer(midpoint2, dist = bb_d*.75)
+# make a box
+box_buf <- st_bbox(buf_round) 
+
+#set viewport
+#Get aspect ratio of bounding box
+asp <- (box_buf$ymax - box_buf$ymin)/(box_buf$xmax - box_buf$xmin)
+w <- 0.38
+h <- asp * w
+vp_2 <- viewport(0.9, 0.25, width = w, height=h)
+
+box_buf_2 <-box_buf%>%
+  st_as_sfc() %>%
+  st_as_sf()
+
+base<-read_osm(box_buf_2, type="bing", minNumTiles = 10)
+
+#plot
+inset_2<-
+  tm_shape(base)+
+  tm_rgb()+ # to color the satelite basemap
+  tm_shape(sampled_HFI_x)+
+    tm_borders(lw=.5, col="red")+
+    tm_shape(x_xy)+
+    tm_symbols(shape=4, alpha = 1, size = .7, col = "black", border.lwd = 2)+
+    tm_grid(lines=FALSE, n.x=3, n.y=3, labels.rot=c(0, 90), labels.size=.3)+
+    tm_layout(frame="black")
+####################################################
+
+####################################################
+# Inset 3
+####################################################
+x_xy<-xy%>%
+ filter(str_detect(SS, "RETNO-1-12"))
+sampled_HFI_x<-st_filter(HFI, x_xy)
+#create a bounding box around study area
+bb<-st_bbox(sampled_HFI_x)
+bb<-st_as_sfc(bb)
+bb<-st_as_sf(bb)
+#get length of bounding box
+bb_d<-bb %>%
+  st_cast('LINESTRING') %>%
+  st_length()/4
+
+# calculate centroid of bounding box
+midpoint3<-st_centroid(bb)
+# create buffer around centroid
+buf_round <- st_buffer(midpoint3, dist = bb_d*.75)
+# make a box
+box_buf <- st_bbox(buf_round) 
+
+#set viewport
+#Get aspect ratio of bounding box
+asp <- (box_buf$ymax - box_buf$ymin)/(box_buf$xmax - box_buf$xmin)
+w <- 0.38
+h <- asp * w
+vp_3 <- viewport(0.9, 0.25, width = w, height=h)
+
+box_buf_3 <-box_buf%>%
+  st_as_sfc() %>%
+  st_as_sf()
+
+base<-read_osm(box_buf_3, type="bing", minNumTiles = 10)
+
+#plot
+inset_3<-
+  tm_shape(base)+
+  tm_rgb()+ # to color the satelite basemap
+  tm_shape(sampled_HFI_x)+
+    tm_borders(lw=.5, col="red")+
+    tm_shape(x_xy)+
+    tm_symbols(shape=4, alpha = 1, size = .7, col = "black", border.lwd = 2)+
+    tm_grid(lines=FALSE, n.x=3, n.y=3, labels.rot=c(0, 90), labels.size=.3)+
+    tm_layout(frame="black")
+####################################################
+
+####################################################
+# Inset 4
+####################################################
+x_xy<-xy%>%
+ filter(Clust==208)
+sampled_HFI_x<-st_filter(HFI, x_xy)
+#create a bounding box around study area
+bb<-st_bbox(sampled_HFI_x)
+bb<-st_as_sfc(bb)
+bb<-st_as_sf(bb)
+#get length of bounding box
+bb_d<-bb %>%
+  st_cast('LINESTRING') %>%
+  st_length()/4
+
+# calculate centroid of bounding box
+midpoint4<-st_centroid(bb)
+# create buffer around centroid
+buf_round <- st_buffer(midpoint4, dist = bb_d*.75)
+# make a box
+box_buf <- st_bbox(buf_round) 
+
+#set viewport
+#Get aspect ratio of bounding box
+asp <- (box_buf$ymax - box_buf$ymin)/(box_buf$xmax - box_buf$xmin)
+w <- 0.38
+h <- asp * w
+vp_4 <- viewport(0.9, 0.25, width = w, height=h)
+
+
+box_buf_4 <-box_buf%>%
+  st_as_sfc() %>%
+  st_as_sf()
+
+base<-read_osm(box_buf_4, type="bing", minNumTiles = 10)
+
+#plot
+inset_4<-
+  tm_shape(base)+
+  tm_rgb()+ # to color the satelite basemap
+  tm_shape(sampled_HFI_x)+
+    tm_borders(lw=.5, col="red")+
+    tm_shape(x_xy)+
+    tm_symbols(shape=4, alpha = 1, size = .7, col = "black", border.lwd = 2)+
+    tm_grid(lines=FALSE, n.x=3, n.y=3, labels.rot=c(0, 90), labels.size=.3)+
+    tm_layout(frame="black")
+####################################################
+
+####################################################
+# Main map
+####################################################
+# Load Alberta shapefile
+alberta<-st_read("../Data/Canada/alberta_bc")
+alberta<-alberta%>%
+  filter(PRENAME=="Alberta")%>%
+  st_transform(crs = 3400)
+
+# Study area and bounding box
+ab_buf<- st_buffer(alberta, dist = 50000)
+box_ab <- st_bbox(ab_buf) 
+
+# get centroids of facet plots
+midpoints<-rbind(midpoint1, midpoint2,midpoint3,midpoint4)
+midpoints$facet_label<-c("A", "B", "C", "D")
+
+#natural regions	
+sub_r<-st_read("../Data/Canada/Natural_Regions_Subregions_of_Alberta/Natural_Regions_Subregions_of_Alberta.shp")
+sub_r<-st_transform(sub_r, crs=3400)
+
+#hillshade
+hillshade<-raster::raster("../Data/Landcover/Alberta/hillshade.tif")
+hillshade<-hillshade%>%
+  raster::crop(alberta)%>%
+  raster::mask(alberta)
+
+#plot
+mainmap<-
+  tm_shape(hillshade, bbox = box_ab)+
+  tm_raster(palette = "-Greys",   legend.show = FALSE)+
+  tm_shape(alberta)+
+  tm_borders()+
+   tm_shape(sub_r) +
+    tm_fill(col="NRNAME", palette = "Dark2", alpha = .3,contrast = c(0.26, 1), title="Natural region")+
+  tm_borders(col="red", lwd=1, alpha = 0)+
+  # tm_shape(base_crop)+
+  # tm_rgb()+ # to color the satelites basemap
+  tm_shape(sampled_ss)+
+    tm_symbols(shape = 4, alpha = .4, size = .7, col = "black")+
+  tm_shape(midpoints)+
+    tm_symbols(shape = 15, alpha = 0, size = 1.2, col = "white")+
+    tm_text("facet_label", col = "red", size = 1.1, just = "top", ymod = 0.3)+
+  tm_scale_bar(position=c(.04, .01), text.color = "black", color.light="white")+
+  tm_graticules(lines=FALSE)+
+  tm_layout(legend.outside=FALSE,
+          # legend.outside.position="top",
+          legend.frame=FALSE,
+          legend.position=c(0.04,.07),
+          legend.title.size= 0.8,
+          legend.text.size = 0.5,
+          legend.bg.alpha=0)
+# mainmap
+####################################################
+
+####################################################
+# Combine all the panels into a single figure
+####################################################
+g1<-tmap_grob(inset_1)
+g2<-tmap_grob(inset_2)
+g3<-tmap_grob(inset_3)
+g4<-tmap_grob(inset_4)
+g5<-tmap_grob(mainmap)
+# 
+# insets<-tmap_grob(plot_grid(g1, g2, g3, ncol = 1))
+# insets<-plot_grid(g1a, g2a, g3a, g4a, ncol = 1, labels = c("A", "B", "C", "D"))
+insets<-plot_grid(g1, g2, g3, g4, ncol = 1, labels = c("A", "B", "C", "D"), label_size = 10, label_x=.09)
+# insets on right
+all<-plot_grid(g5, NULL, insets, ncol=3, rel_widths = c(3,-.7, 1),  scale = c(1, 1, 0.90), align="hv",axis="t")
+# ggsave(all, filename="3_output/maps/studyArea_inset.png", width = 10, height = 7, dpi = 300)
+ggsave(all, filename="3_output/maps/studyArea_inset.png", width = 9, height = 7, dpi = 300)
+
+#insets on left
+# all<-plot_grid(insets, NULL, g5, ncol=3, rel_widths = c(1,-.8, 3),  scale = c(0.92, 1, 1), align="h",axis="t")
+# ggsave(all, filename="3_output/maps/studyArea_inset.png", width = 9, height = 7, dpi = 300)
+```
+
+
+```{r studyArea_tmap, echo=FALSE, fig.cap= "Station locations.", out.width = '100%'}
+knitr::include_graphics("3_output/maps/studyArea_inset.png")
+```
+
+
 
 
 
