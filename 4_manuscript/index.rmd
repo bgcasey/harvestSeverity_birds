@@ -1,13 +1,16 @@
 ---
-title: "Title"
+title: "Predicting avian response to forest harvesting using the Normalized Burn Ratio"
 author: Brendan Casey
 abstract: |
-
+ Understanding the effects of forestry activities on bird populations is essential for the conservation of boreal forest birds. Forest change detection algorithms can help by deriving continuous measures of harvest intensity and recovery from publicly available satellite imagery. We used remote sensing, point count data, acoustic monitoring tools, and mixed-effects regression models to evaluate the impact of variable retention forestry on the taxonomic and functional diversity of birds. Our findings suggest that spectral measures of harvest intensity, post-harvest recovery time, and fractional land cover variables related to low-lying vegetation and water are key drivers of post-harvest bird communities, and harvest residuals can alleviate the effects of forest harvesting on bird communities over time. Across harvest intensities, taxonomic richness, functional richness, functional dispersion, and functional evenness recovered to unharvested levels in less than 25 years post-harvest. Furthermore, we demonstrate that metrics derived from a time-series of Normalized Burn Ratio (NBR) are a promising alternative to conventional categorical harvest intensity metrics from classified land cover maps. Our study highlights the potential of remote sensing algorithms and community functional indices to uncover subtle relationships between forestry practices and bird communities.
 keywords: 
   - Avian
   - Boreal
   - Forestry
   - LiDAR
+fontsize: 12pt
+linestretch: 1.5
+# geometry: "left=4cm, right=3cm, top=2.5cm, bottom=2.5cm"
 date: "`r Sys.Date()`"
 bibliography: library.bib
 link-citations: yes
@@ -19,9 +22,16 @@ citecolor: blue
 # Use a CSL with `citation_package = "default"`
 biblio-style: apalike
 csl: https://www.zotero.org/styles/elsevier-harvard
+always_allow_html: true
 
 
 ---
+
+```{css, echo = FALSE}
+    .verysmall .table{
+      font-size: 8px;
+    }
+```
 
 
 ```{r setup, include=FALSE}
@@ -30,6 +40,7 @@ library(knitr)
 library(tinytex)
 library(kableExtra)
 library(xlsx)
+library(roxygen2)
 
 
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, signif = 3,
@@ -39,7 +50,6 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, signif = 3
                       fig.pos = 'htb')
 
 knitr::read_chunk("code/figures_tables.R")
-
 ```
 
 

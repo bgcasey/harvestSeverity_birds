@@ -1,7 +1,8 @@
-bookdown::pdf_book:
+bookdown::pdf_document2:
     keep_tex: true
     citation_package: default
     includes:
       in_header: "preamble.tex"
+
 
 
