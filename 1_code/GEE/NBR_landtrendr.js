@@ -1,5 +1,7 @@
 /**** Start of imports. If edited, may not auto-convert in the playground. ****/
-var table = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_2");
+var table = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_2"),
+    table2 = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_20220315"),
+    table3 = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_20220315");
 /***** End of imports. If edited, may not auto-convert in the playground. *****/
 //###########################################################################################################
 //## This script was adapted from the following:
@@ -36,9 +38,15 @@ var ss_xy= ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/ss_xy"
 
 // // define interior buffer
 // var buf=-30
+var fullHA = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_20220315");
 
-var fullHA = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_2");
+// var fullHA = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_2");
       // .filter(ee.Filter.bounds(ss_xy));
+
+
+// var table = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_2"),
+//     table2 = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_simp_20220315"),
+//     table3 = ee.FeatureCollection("projects/ee-bgcasey-harvest-birds/assets/o18_HarvestAreas_HFI_2019_buff_neg30_surveyed_20220315");
 
 print('fullHA_size', fullHA.size());
 
@@ -58,17 +66,17 @@ print('fullHA_size', fullHA.size());
 // var filterSpecHAs = ee.Filter.lte('uniquID', subset);
 
 // // //== OR ::
-var filterSpecHAs = ee.Filter.and(ee.Filter.gt('uniquID',4800),ee.Filter.lte('uniquID',5000)); 
+// var filterSpecHAs = ee.Filter.and(ee.Filter.gt('uniquID',4800),ee.Filter.lte('uniquID',5000)); 
 
 
 //== Apply filter to select portion of polygons 
-var HA = fullHA.filter(filterSpecHAs);
-print('HA_size', HA.size());
+// var HA = fullHA.filter(filterSpecHAs);
+// print('HA_size', HA.size());
 
 
 // print("HA", HA.size())
 // // For final analysis use:
-// var HA = fullHA;
+var HA = fullHA;
 
 
 // ///////////////////////
