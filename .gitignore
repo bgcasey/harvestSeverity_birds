@@ -51,4 +51,6 @@ login.R
 .DS_Store
 1_code/r_notebook/depreciated/
 0_data/.DS_Store
-1_code/.DS_Store
+1_code/.DS_Stor
+
+git rm --cached .DS_Store
