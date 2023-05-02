@@ -20,7 +20,7 @@ gee_landcover<-gee_landcover%>%
 load("0_data/manual/spatial/ss_xy_harvest_df_2023-03-16.rData")
 
 # Bird community
-load("0_data/manual/bird/bd_community_2023-02-10.rData")
+# load("0_data/manual/bird/bd_community_2023-02-10.rData")
 load("0_data/manual/bird/bd_community_2023-03-20.rData")
 # NBR from ABMI polygons
 load("0_data/manual/gee_tables/finalFullTable_flag.rData")
@@ -44,8 +44,9 @@ bd_cov<-bd_community%>%
   mutate(ss_dst_timelag=survey_year-round(dist_yr_1, 0))%>%
   mutate(ss_dst_timelag_nbr=survey_year-round(NBR_yod, 0))%>%
   mutate(ss_dst_timelag=survey_year-round(dist_yr_1, 0))%>%
-  mutate(dist_date_dif=ss_dst_timelag_nbr-ss_dst_timelag)%>%
-  filter(!is.na(preDistMean)) #for low confidence NBR yod use cas-fri yod %>%
+  mutate(dist_date_dif=ss_dst_timelag_nbr-ss_dst_timelag)
+# %>%
+  # filter(!is.na(preDistMean)) #for low confidence NBR yod use cas-fri yod %>%
   
 save(bd_cov, file=paste0("0_data/manual/for_models/bd_cov_", Sys.Date(), ".rData"))
 
@@ -83,16 +84,26 @@ bd_cov_2<-bd_cov%>%
   dplyr::select(-preDistMean)%>%
   top_n(1, sampling_intensity)%>%
   ungroup()%>%
-  mutate(dNBR_perc_flag = ifelse((dNBR_perc< mean(dNBR_perc)+ (2*sd(dNBR_perc) ) & dNBR_perc >mean(dNBR_perc)- (2*sd(dNBR_perc) )),
-"n", "y"))%>%
-  mutate(RdNBR_flag = ifelse((RdNBR< mean(RdNBR)+ (2*sd(RdNBR) ) & RdNBR >mean(RdNBR)- (2*sd(RdNBR) )),
-"n", "y"))
+#   mutate(dNBR_perc_flag = ifelse((dNBR_perc< mean(dNBR_perc)+ (2*sd(dNBR_perc) ) & dNBR_perc >mean(dNBR_perc)- (2*sd(dNBR_perc) )),
+# "n", "y"))%>%
+#   mutate(RdNBR_flag = ifelse((RdNBR< mean(RdNBR)+ (2*sd(RdNBR) ) & RdNBR >mean(RdNBR)- (2*sd(RdNBR) )),
+# "n", "y"))
+# 
+# %>%
+  ## rempove timelag of 0 (cant be sure if it is before or after harcvest)
+   mutate_at(c(47:48, 52), ~replace_na(.,0))%>%
+   mutate_at(c(6), ~replace_na(.,-1))%>%
+  mutate(harvest=ifelse(is.na(NBR_yod), "n", "y"))%>%
+  filter(ss_dst_timelag_nbr!=0)%>%
+  mutate_at(c(47:48, 52), ~ifelse(ss_dst_timelag_nbr < 0,0, .))
 #   mutate(dNBR_perc_flag = ifelse((dNBR_perc< mean(bd_cov_2$dNBR_perc)+ (2*sd(bd_cov_2$dNBR_perc) ) & dNBR_perc >mean(bd_cov_2$dNBR_perc)- (2*sd(bd_cov_2$dNBR_perc) )),
 # "n", "y"))%>%
 #    mutate(RdNBR_flag = ifelse((RdNBR< mean(bd_cov_2$RdNBR)+ (2*sd(bd_cov_2$RdNBR) ) & RdNBR >mean(bd_cov_2$RdNBR)- (2*sd(bd_cov_2$RdNBR) )),
 # "n", "y"))
 #   
-  
+
+bd_cov_2$ss_dst_timelag_nbr[bd_cov_2$ss_dst_timelag_nbr < 0] <- 0
+
 bd_cov_processed<-bd_cov_2
 
 save(bd_cov_processed, file=paste0("0_data/manual/for_models/bd_cov_processed_", Sys.Date(), ".rData"))
@@ -100,10 +111,53 @@ save(bd_cov_processed, file=paste0("0_data/manual/for_models/bd_cov_processed_",
 load("0_data/manual/for_models/bd_cov_processed_2023-03-20.rData")
 ```
 
+
+## Filter {-}
+```{r eval=FALSE}
+
+# filter based on NBR confidence scores
+# bd_cov_processed_scaled_filtered<-bd_cov_processed%>%
+#   # filter(survey_year>NBR_yod-10)%>%#3404
+#   filter(survey_year>NBR_yod)%>%#3404
+#   filter(flag_pixels=="n")%>%
+#   filter(yodConf>3)%>% #2343
+#   filter(dNBR_perc_flag=="n")%>%
+#   filter(RdNBR_flag=="n")%>%#2212
+#   #remove sampling intensity outliers%>%
+#   filter(n_count<10)#2168
+#   # filter(n_count<=5)#2082
+# 
+# bd_cov_processed_filtered<-bd_cov_processed%>%
+#   # filter(survey_year>NBR_yod-10)%>%#3404
+#   # filter(survey_year>NBR_yod)%>%#3404
+#   filter(survey_year<NBR_yod|flag_pixels=="n")%>%
+#   filter(survey_year<NBR_yod|yodConf>3)%>% #2343
+#   filter(survey_year<NBR_yod|dNBR_perc_flag=="n")%>%
+#   filter(survey_year<NBR_yod|RdNBR_flag=="n")%>%#2212
+#   #remove sampling intensity outliers%>%
+#   filter(survey_year<NBR_yod|n_count<10)#2168
+#   # filter(n_count<=5)#2082
+
+
+bd_cov_processed_filtered<-bd_cov_processed%>%
+  filter(!is.na(dist_to_edge))%>%
+  # filter(survey_year>NBR_yod-10)%>%#3404
+  # filter(survey_year>NBR_yod)%>%#3404
+  filter(is.na(NBR_yod)|(survey_year>NBR_yod&flag_pixels=="n"))%>%
+  filter(is.na(NBR_yod)|(survey_year>NBR_yod&yodConf>3))%>%#2212
+  filter(is.na(NBR_yod)|n_count<10)%>% #2168
+  filter(is.na(NBR_yod)|(dNBR_perc<=1))
+
+
+save(bd_cov_processed_filtered, file=paste0("0_data/manual/for_models/bd_cov_processed_filtered_", Sys.Date(), ".rData"))
+
+load("0_data/manual/for_models/bd_cov_processed_filtered_2023-04-19.rData")
+```
+
 ## Scale data {-}
 
 ```{r eval=FALSE}
-p1<-bd_cov_processed
+p1<-bd_cov_processed_filtered
 # reclassify columns 
 ## check classes
 lapply(p1,class)
@@ -119,37 +173,19 @@ lapply(p2,class)
 # scale all numeric columns
 p3<- p2%>%
   ungroup()%>%
-   mutate(across(-c(SS:NBR_yod, MAXDUR:RaoQ,"yodConf","sumConf", "flag_pixels", "dNBR_perc_flag", "RdNBR_flag"), scale))
+   mutate(across(-c(SS:NBR_yod, MAXDUR:RaoQ,"yodConf","sumConf", "flag_pixels", "harvest"), scale))
  
 # check classes
 lapply(p3, class)
 
-bd_cov_processed_scaled<-p3
-
-save(bd_cov_processed_scaled, file=paste0("0_data/manual/for_models/bd_cov_processed_scaled_", Sys.Date(), ".rData"))
-
-load("0_data/manual/for_models/bd_cov_processed_scaled_2023-03-20.rData")
-```
-
-## Filter {-}
-```{r eval=FALSE}
-load("0_data/manual/for_models/bd_cov_processed_scaled_2023-03-20.rData")
-
-# filter based on NBR confidence scores
-bd_cov_processed_scaled_filtered<-bd_cov_processed_scaled%>%
-  filter(survey_year>NBR_yod)%>%#3404
-  filter(flag_pixels=="n")%>%
-  filter(yodConf>3)%>% #2343
-  filter(dNBR_perc_flag=="n")%>%
-  filter(RdNBR_flag=="n")%>%#2212
-  #remove sampling intensity outliers%>%
-  filter(n_count<10)#2168
-  # filter(n_count<=5)#2082
+bd_cov_processed_scaled_filtered<-p3
 
 save(bd_cov_processed_scaled_filtered, file=paste0("0_data/manual/for_models/bd_cov_processed_scaled_filtered_", Sys.Date(), ".rData"))
 
-load("0_data/manual/for_models/bd_cov_processed_scaled_filtered_2023-03-20.rData")
+load("0_data/manual/for_models/bd_cov_processed_scaled_filtered_2023-04-19.rData")
 ```
+
+
 
 ## Map filtered harvests and points {-}
 
@@ -454,7 +490,7 @@ mainmap<-
   tm_shape(alberta)+
   tm_borders()+
    tm_shape(sub_r) +
-    tm_fill(col="NRNAME", palette = "Dark2", alpha = .3,contrast = c(0.26, 1), title="Natural region")+
+    tm_fill(col="NSRNAME", palette = "Dark2", alpha = .3,contrast = c(0.26, 1), title="Natural region")+
   tm_borders(col="red", lwd=1, alpha = 0)+
   # tm_shape(base_crop)+
   # tm_rgb()+ # to color the satelites basemap
