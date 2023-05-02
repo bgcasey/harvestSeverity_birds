@@ -17,6 +17,8 @@ pre[class] {
 }
 ```
 
+## Interaction plots {-}
+
 ```{r}
 pred <- list.files("3_output/model_predictions", pattern="*.rData", full.names=TRUE)
 lapply(pred, load,.GlobalEnv)
@@ -60,80 +62,510 @@ ggsave(gg1, filename=paste0("3_output/figures/time_nbrDist_interaction_all_noOff
 
 ```
 
-```{r eval=FALSE}
-pred_df<-rbind(pred_rich, pred_FDis, pred_FDiv, pred_FEve, pred_FRic, pred_shan)
-  
-gg1 <- (ggplot(pred_df)
-  + aes(timelag, predicted, ymin = conf.low, ymax = conf.high,
-        colour  = factor(g))
-  +  xlim(0, 25)
- # + scale_color_manual(values = c('#c6dbef','#9ecae1','#6baed6','#4292c6','#2171b5','#08519c','#08306b', '#08256b', '#08256f'))
- 
-  + scale_colour_viridis_d(option = "viridis")
-  # + geom_line()
-  # + geom_ribbon(colour = NA, alpha = 0.3)
-  + stat_smooth(method = "lm",
-                formula = y ~ poly(x, 3),
-                se = TRUE, 
-                size=.3)
-  + facet_wrap(~response, scales = "free",ncol=2)
-  +labs(color="NBR disturbance (%)") 
-  + guides(color=guide_legend(override.aes=list(fill=NA))) ## to make legend background white while using geomsmooth confidenence limits
-  # + geom_ribbon(colour = NA, alpha = 0.3)
-  +   theme(panel.background = element_blank(),
-          text = element_text(size=10, family="LMRoman10-Regular"),
-          axis.ticks=element_blank(),
-          #strip.background =element_rect(fill="white"),
-          panel.border = element_rect(color = "black", fill = NA, size = .2),
-          axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
-           axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
-          #panel.background = element_rect(fill="white"),
-          panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(),
-          strip.background =element_rect(fill="white"),
-          legend.key = element_rect(fill = "white"),
-          strip.text = element_text(family="LMRoman10-Italic"))
-)
-gg1
 
-# ggsave(gg1, filename=paste0("3_output/figures/time_nbrDist_interaction_all.png"), width =6, height=6)
-```
-
-
-
-
+## Model peroformance
 
 ```{r}
 
 
-load("3_output/shan_m1.rData")
-load("3_output/richness_m1.rData")
-load("3_output/FEve_m1.rData")
-load("3_output/FDiv_m1.rData")
-load("3_output/FRic_m1.rData")
-load("3_output/FDis_m1.rData")
+
+load("0_data/manual/for_models/bd_cov_processed_scaled_filtered_2023-04-19.rData")
+data<-bd_cov_processed_scaled_filtered%>%filter(n_count<=5)
 
 
-jtools::export_summs(shan_m1, FEve_m1,  exp=FALSE, set_caption="test", to.file = "xlsx", digits=3, error_pos = "below", 
-                     
-#                      model.names=c("Setophaga ruticilla",]
-# "Setophaga virens",
-# "Geothlypis philadelphia",]
-# "Catharus ustulatus",
-# "Troglodytes hiemalis",
-# "Zonotrichia albicollis"),
+load("3_output/models/shan_m2_2023-04-21.rData")
+load("3_output/models/richness_m2_2023-04-25.rData")
+load("3_output/models/FEve_m2_2023-04-21.rData")
+load("3_output/models/FDiv_m2_2023-04-21.rData")
+load("3_output/models/FRic_m2_2023-04-21.rData")
+load("3_output/models/FDis_m2_2023-04-21.rData")
 
-note = "{stars};   SE statistics in parenthesis.",file.name = "3_output/tables/models_stats.xlsx")   
+library(performance)
 
-#  
-# "American Redstart",
-# "Black-throated Green Warbler",
-# "Mourning Warbler",
-# "Swainson's Thrush",
-# "Winter Wren",
-# "White-throated Sparrow"                                                                                                                                             
-                                                  
+FRic_perf<-model_performance(FRic_m2)%>%
+  mutate("Response variable"="Functional richness (FRic)")
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(richness:FEve, FDis:RaoQ))%>%
+  filter(FDiv>0)%>%
+  filter(!is.na(FDiv))%>%
+  dplyr::filter(!is.na(area))
+FDiv_perf<-model_performance(FDiv_m2)%>%
+  mutate("Response variable"="Functional divergence (FDiv)")
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(richness:qual.FRic, FDiv:RaoQ))%>%
+  filter(!is.na(FEve))%>%
+  dplyr::filter(!is.na(area))
+FEve_perf<-model_performance(FEve_m2)%>%
+  mutate("Response variable"="Functional evenness (FEve)")
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(richness:FDiv, qual.FRic:FDiv, RaoQ))%>%
+  filter(FDis>0)%>%
+  filter(!is.na(FDis))%>%
+  dplyr::filter(!is.na(area))
+FDis_perf<-model_performance(FDis_m2)%>%
+  mutate("Response variable"="Functional dispersion (FDis)")
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(menhIndx:margIndx, brill:RaoQ))%>%
+  filter(shan>0)%>%
+  filter(!is.na(shan))%>%
+  dplyr::filter(!is.na(area))
+shan_perf<-model_performance(shan_m2)%>%
+  mutate("Response variable"="Shannon diversity index (shan)")
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(menhIndx:RaoQ, "yodConf","sumConf", "flag_pixels"))%>%
+  dplyr::filter(!is.na(area))
+richness_perf<-model_performance(richness_m2)%>%
+  mutate("Response variable"="Richness")%>%
+  dplyr::select(-c(Score_spherical, Score_log))
+
+m_perf<-rbind(FRic_perf, FDis_perf, FDiv_perf, FEve_perf, shan_perf, richness_perf)%>%
+  dplyr::select(c(9, 1:8))
+m_perf<-m_perf[c(9, 1:8)]  
+
+save(m_perf, file=paste0("3_output/tables/models_performance_", Sys.Date(), ".rData"))
+  
+# plot(allEffects(FRic_m1))
+# plot(allEffects(FDiv_m1))
+# plot(allEffects(FEve_m1))
+# plot(allEffects(FDis_m1))
+# plot(allEffects(shan_m1))
+# plot(allEffects(richness_m1))
+
+# test<-fixef(FRic_m1)
+# 
+jtools::export_summs(richness_m2, shan_m2, FRic_m2, FDis_m2, FDiv_m2, FEve_m2, exp=FALSE, set_caption="test", to.file = "html", digits=3, error_pos = "below", model.names=c("Richness",
+"Shan",
+"FRic",
+"FDis",
+"FDiv",
+"FEve"), 
+coefs=c("ss_dst_timelag_nbr"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)1", 
+"ss_dst_timelag_nbr^2"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)2", 
+"dNBR_perc"="dNBR_perc", 
+"Exposed_Barren_land"="Exposed_Barren_land", 
+"Herbs"="Herbs", 
+"Shrubs"="Shrubs", 
+"Water"="Water", 
+"canopy_standard_deviation"="canopy_standard_deviation", 
+"ss_dst_timelag_nbr:dNBR_perc"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)1:dNBR_perc", 
+"ss_dst_timelag_nbr^2:dNBR_perc"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)2:dNBR_perc", 
+"dNBR_perc"="poly(dNBR_perc, 2)1", 
+"dNBR_perc^2"="poly(dNBR_perc, 2)2", 
+"dist_to_edge"="dist_to_edge", 
+"ss_dst_timelag_nbr"="ss_dst_timelag_nbr", 
+"ss_dst_timelag_nbr:dNBR_perc"="ss_dst_timelag_nbr:dNBR_perc" ),
+# coefs=c("ss_dst_timelag_nbr"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)1", "ss_dst_timelag_nbr^2"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)2", "dNBR_perc"="poly(dNBR_perc, 2, raw = TRUE)1", "dNBR_perc^2"="poly(dNBR_perc, 2, raw = TRUE)2", "Exposed_Barren_land"="Exposed_Barren_land", "Herbs"="Herbs", "Shrubs"="Shrubs", "Water"="Water", "canopy_standard_deviation"="canopy_standard_deviation", "ss_dst_timelag_nbr:dNBR_perc"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)1:poly(dNBR_perc, 2, raw = TRUE)1", "ss_dst_timelag_nbr^2:dNBR_perc"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)2:poly(dNBR_perc, 2, raw = TRUE)1", "ss_dst_timelag_nbr:dNBR_perc^2"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)1:poly(dNBR_perc, 2, raw = TRUE)2", "ss_dst_timelag_nbr^2:dNBR_perc^2"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)2:poly(dNBR_perc, 2, raw = TRUE)2", 
+# "ss_dst_timelag_nbr^2:dNBR_perc"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)2:dNBR_perc",   "ss_dst_timelag_nbr:dNBR_perc"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)1:dNBR_perc",  "dNBR_perc"="dNBR_perc",    
+#         "dist_to_edge"="dist_to_edge", "ss_dst_timelag_nbr:dNBR_perc"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)1:dNBR_perc","ss_dst_timelag_nbr^2:dNBR_perc"="poly(ss_dst_timelag_nbr, 2, raw = TRUE)2:dNBR_perc", "ss_dst_timelag_nbr"="ss_dst_timelag_nbr", "ss_dst_timelag_nbr:dNBR_perc"="ss_dst_timelag_nbr:dNBR_perc", "dNBR_perc"="poly(dNBR_perc, 2)1","dNBR_perc^2"="poly(dNBR_perc, 2)2"
+# ), 
+note = "{stars};   SE statistics in parenthesis.", file.name = paste0("3_output/tables/models_stats_", Sys.Date(), ".html"))
+#                      
+          
+#                                                   
 library(webshot)
-webshot("3_output/tables/spp_models_stats_00.html", "3_output/tables/spp_models_stats_00.png")
+webshot("3_output/tables/models_stats_2023-04-26.html", "3_output/tables/models_stats_2023-04-26.png")
 ```
+
+
+
+## Dot plots {-}
+
+```{r}
+library(cowplot)
+pred <- list.files("3_output/model_predictions", pattern="*2023-04-21.rData", full.names=TRUE)
+lapply(pred, load,.GlobalEnv)
+
+load("3_output/model_predictions/rich_m2_2023-04-25.rData")
+
+pred_df<-rbind(pred_FDis_m2, pred_FDiv_m2, pred_FRic_m2, pred_rich_m2, pred_shan_m2)%>%
+  dplyr::select(-c("std.error","conf.low","conf.high"))%>%
+  rbind(pred_FEve_m2)
+
+# pred_df<-rbind(pred_FDis_no_off, pred_FDiv_no_off, pred_FEve_no_off, pred_FRic_no_off, pred_rich_no_off, pred_shan_no_off)
+
+# pred_df<-rbind(pred_FDis, pred_FDiv, pred_FEve, pred_FRic, pred_rich, pred_shan)
+  
+my_labeller <- as_labeller(c('5' ="1-5", '10' = "5-10", '15' = "10-15", '20'="15-20", '25'="20-25"), default = label_parsed)
+
+#set up a geom for annotated text to place it only on one facet
+
+#####################################################
+#parameters for hline representing pre-harvest mean
+unharvested<-pred_df%>%
+  filter(response=="Richness")%>%
+  filter(g=="0")
+
+unharvested_mean_rich<-mean(unharvested$predicted)
+unharvested_mean_ci_rich <- qt(0.975,df=length(unharvested$predicted)-1)*sd(unharvested$predicted)/sqrt(length(unharvested$predicted))
+
+ann_text_rich <- data.frame(predicted = unharvested_mean_rich, g = 60,lab = "Text",
+                       year_group = factor(5,levels = c("5", "10", "15", "20", "25", "30", "35")))
+
+dot_richness<-pred_df%>%
+  filter(response=="Richness")%>%
+  filter(timelag>0)%>%
+  filter(g!=0)%>%
+  mutate(year_group=cut(timelag, 
+                   breaks=c(0, 5, 10, 15, 20, 25, 30, 35), 
+                   labels=c("5", "10", "15", "20", "25", "30", "35")))%>%
+  filter(timelag<=25)%>%
+  ggplot()+aes(g, predicted) + 
+      geom_ribbon(aes(ymax = unharvested_mean_rich+unharvested_mean_ci_rich
+  , ymin = unharvested_mean_rich-unharvested_mean_ci_rich)
+                    , col = "white", fill="#f0f0f0")+
+    stat_summary(fun = mean,
+               fun.min = function(x) mean(x) - qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               fun.max = function(x) mean(x) + qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               size=.1,
+               geom = "pointrange")+
+
+    geom_hline(yintercept = mean(unharvested$predicted), linetype = 'dashed')+
+    geom_text(data = ann_text_rich,label = "Pre-harvest", size=2.75, vjust=-0.90)+
+    labs(x = "NBR disturbance (%)",
+         y = "Richness")+   
+    facet_grid(~year_group, scales = "free_x", space = "free_x", labeller = my_labeller) +
+    theme_bw()+
+    theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank())
+
+#####################################################
+#parameters for hline representing pre-harvest mean
+unharvested<-pred_shan_m2%>%
+  filter(response=="Shannon diversity")%>%
+  filter(g=="0")
+unharvested_mean_shan<-mean(unharvested$predicted)
+unharvested_mean_ci_shan <- qt(0.975,df=length(unharvested$predicted)-1)*sd(unharvested$predicted)/sqrt(length(unharvested$predicted))
+
+ann_text_shan <- data.frame(predicted = unharvested_mean_shan, g = 60,lab = "Text",
+                       year_group = factor(5,levels = c("5", "10", "15", "20", "25", "30", "35")))
+
+dot_shan<-pred_shan_m2%>%
+  filter(response=="Shannon diversity")%>%
+   filter(timelag>0)%>%
+  filter(g!=0)%>%
+  mutate(year_group=cut(timelag, 
+                   breaks=c(0, 5, 10, 15, 20, 25, 30, 35), 
+                   labels=c("5", "10", "15", "20", "25", "30", "35")))%>%
+  filter(timelag<=25)%>%
+  ggplot()+aes(g, predicted) + 
+  geom_ribbon(aes(ymax = unharvested_mean_shan+unharvested_mean_ci_shan
+                    , ymin = unharvested_mean_shan-unharvested_mean_ci_shan)
+                    , col = "white", fill="#f0f0f0")+
+    stat_summary(fun = mean,
+               fun.min = function(x) mean(x) - qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               fun.max = function(x) mean(x) + qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               size=.1,
+               geom = "pointrange")+
+    geom_hline(yintercept = mean(unharvested$predicted), linetype = 'dashed')+
+    geom_text(data = ann_text_shan,label = "Pre-harvest", size=2.75, vjust=-0.90)+
+    labs(x = "NBR disturbance (%)",
+         y = "Shannon diversity")+   
+    facet_grid(~year_group, scales = "free_x", space = "free_x", labeller = my_labeller) +
+    theme_bw()+
+    theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank())
+
+#####################################################
+#parameters for hline representing pre-harvest mean
+unharvested<-pred_df%>%
+  filter(response=="Functional Richness")%>%
+  filter(g=="0")
+unharvested_mean_FRic<-mean(unharvested$predicted)
+unharvested_mean_ci_FRic <- qt(0.975,df=length(unharvested$predicted)-1)*sd(unharvested$predicted)/sqrt(length(unharvested$predicted))
+
+ann_text_FRic <- data.frame(predicted = unharvested_mean_FRic, g = 60,lab = "Text",
+                       year_group = factor(5,levels = c("5", "10", "15", "20", "25", "30", "35")))
+
+dot_FRic<-pred_df%>%
+  filter(response=="Functional Richness")%>%
+   filter(timelag>0)%>%
+  filter(g!=0)%>%
+  mutate(year_group=cut(timelag, 
+                   breaks=c(0, 5, 10, 15, 20, 25, 30, 35), 
+                   labels=c("5", "10", "15", "20", "25", "30", "35")))%>%
+  filter(timelag<=25)%>%
+  ggplot()+aes(g, predicted) + 
+    geom_ribbon(aes(ymax = unharvested_mean_FRic+unharvested_mean_ci_FRic
+                    , ymin = unharvested_mean_FRic-unharvested_mean_ci_FRic)
+                    , col = "white", fill="#f0f0f0")+  
+    stat_summary(fun = mean,
+               fun.min = function(x) mean(x) - qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               fun.max = function(x) mean(x) + qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               size=.1,
+               geom = "pointrange")+
+
+    geom_hline(yintercept = mean(unharvested$predicted), linetype = 'dashed')+
+    geom_text(data = ann_text_FRic,label = "Pre-harvest", size=2.75, vjust=-0.90)+
+    labs(x = "NBR disturbance (%)",
+         y = "Functional Richness")+   
+    facet_grid(~year_group, scales = "free_x", space = "free_x", labeller = my_labeller) +
+    theme_bw()+
+    theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank())
+
+#####################################################
+#parameters for hline representing pre-harvest mean
+unharvested<-pred_df%>%
+  filter(response=="Functional Evenness")%>%
+  filter(g=="0")
+unharvested_mean_FEve<-mean(unharvested$predicted)
+unharvested_mean_ci_FEve <- qt(0.975,df=length(unharvested$predicted)-1)*sd(unharvested$predicted)/sqrt(length(unharvested$predicted))
+
+ann_text_FEve <- data.frame(predicted = unharvested_mean_FEve, g = 60,lab = "Text",
+                       year_group = factor(5,levels = c("5", "10", "15", "20", "25", "30", "35")))
+
+dot_FEve<-pred_df%>%
+  filter(response=="Functional Evenness")%>%
+   filter(timelag>0)%>%
+  filter(g!=0)%>%
+  mutate(year_group=cut(timelag, 
+                   breaks=c(0, 5, 10, 15, 20, 25, 30, 35), 
+                   labels=c("5", "10", "15", "20", "25", "30", "35")))%>%
+  filter(timelag<=25)%>%
+  ggplot()+aes(g, predicted) + 
+    geom_ribbon(aes(ymax = unharvested_mean_FEve+unharvested_mean_ci_FEve
+                    , ymin = unharvested_mean_FEve-unharvested_mean_ci_FEve)
+                    , col = "white", fill="#f0f0f0")+
+    stat_summary(fun = mean,
+               fun.min = function(x) mean(x) - qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               fun.max = function(x) mean(x) + qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               size=.1,
+               geom = "pointrange")+
+    geom_hline(yintercept = mean(unharvested$predicted), linetype = 'dashed')+
+    geom_text(data = ann_text_FEve,label = "Pre-harvest", size=2.75, vjust=-0.90)+
+    labs(x = "NBR disturbance (%)",
+         y = "Functional Evenness")+   
+    facet_grid(~year_group, scales = "free_x", space = "free_x", labeller = my_labeller) +
+    theme_bw()+
+    theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank())
+
+#####################################################
+#parameters for hline representing pre-harvest mean
+unharvested<-pred_df%>%
+  filter(response=="Functional Divergence")%>%
+  filter(g=="0")
+unharvested_mean_FDiv<-mean(unharvested$predicted)
+unharvested_mean_ci_FDiv <- qt(0.975,df=length(unharvested$predicted)-1)*sd(unharvested$predicted)/sqrt(length(unharvested$predicted))
+
+ann_text_FDiv <- data.frame(predicted = unharvested_mean_FDiv, g = 60,lab = "Text",
+                       year_group = factor(5,levels = c("5", "10", "15", "20", "25", "30", "35")))
+
+dot_FDiv<-pred_df%>%
+  filter(response=="Functional Divergence")%>%
+    filter(timelag>0)%>%
+  filter(g!=0)%>%
+  mutate(year_group=cut(timelag, 
+                   breaks=c(0, 5, 10, 15, 20, 25, 30, 35), 
+                   labels=c("5", "10", "15", "20", "25", "30", "35")))%>%
+  filter(timelag<=25)%>%
+  ggplot()+aes(g, predicted) + 
+      geom_ribbon(aes(ymax = unharvested_mean_FDiv+unharvested_mean_ci_FDiv
+                    , ymin = unharvested_mean_FDiv-unharvested_mean_ci_FDiv)
+                    , col = "white", fill="#f0f0f0")+
+    stat_summary(fun = mean,
+               fun.min = function(x) mean(x) - qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               fun.max = function(x) mean(x) + qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               size=.1,
+               geom = "pointrange")+
+
+    geom_hline(yintercept = mean(unharvested$predicted), linetype = 'dashed')+
+    geom_text(data = ann_text_FDiv,label = "Pre-harvest", size=2.75, vjust=-0.90)+
+    labs(x = "NBR disturbance (%)",
+         y = "Functional Divergence")+   
+    facet_grid(~year_group, scales = "free_x", space = "free_x", labeller = my_labeller) +
+    theme_bw()+
+    theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank())
+
+#####################################################
+#parameters for hline representing pre-harvest mean
+unharvested<-pred_df%>%
+  filter(response=="Functional Dispersion")%>%
+  filter(g=="0")
+unharvested_mean_FDis<-mean(unharvested$predicted)
+unharvested_mean_ci_FDis <- qt(0.975,df=length(unharvested$predicted)-1)*sd(unharvested$predicted)/sqrt(length(unharvested$predicted))
+
+ann_text_FDis <- data.frame(predicted = unharvested_mean_FDis, g = 60,lab = "Text",
+                       year_group = factor(5,levels = c("5", "10", "15", "20", "25", "30", "35")))
+
+dot_FDis<-pred_df%>%
+  filter(response=="Functional Dispersion")%>%
+    filter(timelag>0)%>%
+  filter(g!=0)%>%
+  mutate(year_group=cut(timelag, 
+                   breaks=c(0, 5, 10, 15, 20, 25, 30, 35), 
+                   labels=c("5", "10", "15", "20", "25", "30", "35")))%>%
+  filter(timelag<=25)%>%
+  ggplot()+aes(g, predicted) + 
+    geom_ribbon(aes(ymax = unharvested_mean_FDis+unharvested_mean_ci_FDis
+                    , ymin = unharvested_mean_FDis-unharvested_mean_ci_FDis)
+                    , col = "white", fill="#f0f0f0")+  
+    stat_summary(fun = mean,
+               fun.min = function(x) mean(x) - qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               fun.max = function(x) mean(x) + qt(0.975,df=length(x)-1)*sd(x)/sqrt(length(x)), 
+               size=.1,
+               geom = "pointrange")+
+
+    geom_hline(yintercept = mean(unharvested$predicted), linetype = 'dashed')+
+    geom_text(data = ann_text_FDis,label = "Pre-harvest", size=2.75, vjust=-0.90)+
+    labs(x = "NBR disturbance (%)",
+         y = "Functional Dispersion")+   
+    facet_grid(~year_group, scales = "free_x", space = "free_x", labeller = my_labeller) +
+    theme_bw()+
+    theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.background = element_blank())
+
+#####################################################
+all_div<-plot_grid(dot_richness, dot_shan, scale = 0.97, ncol=2)
+ggsave(all_div, filename=paste0("3_output/figures/time_nbrDist_dot_div_", Sys.Date(), ".png"), width = 10, height = 4, dpi = 300)
+
+all_fdiv<-plot_grid(dot_FRic, dot_FEve, dot_FDiv, dot_FDis,scale = 0.97, ncol=2)
+ggsave(all_fdiv, filename=paste0("3_output/figures/time_nbrDist_dot_fdiv_", Sys.Date(), ".png"), width = 10, height = 8, dpi = 300)
+```
+
+
+
+## Contribution of fixed effects {-}
+```{r eval=FALSE}
+
+library(r2glmm)
+
+load("0_data/manual/for_models/bd_cov_processed_scaled_filtered_2023-04-19.rData")
+data<-bd_cov_processed_scaled_filtered
+
+load("3_output/models/shan_m2_2023-04-21.rData")
+load("3_output/models/richness_m2_2023-04-25.rData")
+load("3_output/models/FEve_m2_2023-04-21.rData")
+load("3_output/models/FDiv_m2_2023-04-21.rData")
+load("3_output/models/FRic_m2_2023-04-21.rData")
+load("3_output/models/FDis_m2_2023-04-21.rData")
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(menhIndx:RaoQ, "yodConf","sumConf", "flag_pixels"))%>%
+  dplyr::filter(!is.na(area))
+richness_r2beta<-r2beta(model = richness_m2, method = 'sgv', data=d, partial = T)
+# richness_r2beta<-spread(richness_r2beta[c(1,6)], Effect, Rsq)
+richness_r2beta$response<-"richness"
+# richness_r2beta$name<-"richness"
+# richness_r2beta<-dplyr::select(richness_r2beta, "response", "name", "Model", 1:ncol(richness_r2beta))
+
+
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(menhIndx:margIndx, brill:RaoQ))%>%
+  filter(shan>0)%>%
+  filter(!is.na(shan))%>%
+  dplyr::filter(!is.na(area))
+shan_r2beta<-r2beta(model = shan_m2, method = 'sgv', data=d, partial = T)
+# shan_r2beta<-spread(shan_r2beta[c(1,6)], Effect, Rsq)
+shan_r2beta$response<-"shan"
+# shan_r2beta$name<-"shan"
+# shan_r2beta<-dplyr::select(shan_r2beta, "response", "name", "Model", 1:ncol(shan_r2beta))
+
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(richness:FEve, FDis:RaoQ))%>%
+  filter(FDiv>0)%>%
+  filter(!is.na(FDiv))%>%
+  dplyr::filter(!is.na(area))
+FDiv_r2beta<-r2beta(model = FDiv_m2, method = 'sgv', data=d, partial = T)
+# FDiv_r2beta<-spread(FDiv_r2beta[c(1,6)], Effect, Rsq)
+FDiv_r2beta$response<-"FDiv"
+# FDiv_r2beta$name<-"FDiv"
+# FDiv_r2beta<-dplyr::select(FDiv_r2beta, "response", "name", "Model", 1:ncol(FDiv_r2beta))
+
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(richness:sing.sp, qual.FRic:RaoQ))%>%
+  dplyr::filter(!is.na(FRic))%>%
+  dplyr::filter(!is.na(area))
+FRic_r2beta<-r2beta(model = FRic_m2, method = 'sgv', data=d, partial = T)
+# FRic_r2beta<-spread(FRic_r2beta[c(1,6)], Effect, Rsq)
+FRic_r2beta$response<-"FRic"
+# FRic_r2beta$name<-"FRic"
+# FRic_r2beta<-dplyr::select(FRic_r2beta, "response", "name", "Model", 1:ncol(FRic_r2beta))
+
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(richness:qual.FRic, FDiv:RaoQ))%>%
+  filter(!is.na(FEve))%>%
+  dplyr::filter(!is.na(area))
+FEve_r2beta<-r2beta(model = FEve_m2, method = 'sgv', data=d, partial = T)
+# FEve_r2beta<-spread(FEve_r2beta[c(1,6)], Effect, Rsq)
+FEve_r2beta$response<-"FEve"
+# FEve_r2beta$name<-"FEve"
+# FEve_r2beta<-dplyr::select(FEve_r2beta, "response", "name", "Model", 1:ncol(FEve_r2beta))
+
+
+d<-data%>%
+  dplyr::select(-c(Snow_Ice, Unclassified, Bryoids))%>%   
+  dplyr::select(-c(richness:FDiv, qual.FRic:FDiv, RaoQ))%>%
+  filter(FDis>0)%>%
+  filter(!is.na(FDis))%>%
+  dplyr::filter(!is.na(area))
+FDis_r2beta<-r2beta(model = FDis_m2, method = 'sgv', data=d, partial = T)
+# FDis_r2beta<-spread(FDis_r2beta[c(1,6)], Effect, Rsq)
+FDis_r2beta$response<-"FDis"
+# FDis_r2beta$name<-"FDis"
+# FDis_r2beta<-dplyr::select(FDis_r2beta, "response", "name", "Model", 1:ncol(FDis_r2beta))
+
+
+all_r2beta<-rbind(FRic_r2beta, FDis_r2beta, FDiv_r2beta, FEve_r2beta, richness_r2beta, shan_r2beta)%>%
+  dplyr::select(c(response, Effect, Rsq))%>%
+  mutate(Rsq=round(Rsq, digits=3))
+
+save(all_r2beta, file=paste0("3_output/tables/all_r2beta_", Sys.Date(), ".rData"))
+```
+
+
+
+
+## Load tables
+```{r}
+load("3_output/tables/all_r2beta_2023-04-26.rData")
+load("3_output/tables/models_performance_2023-04-21.rData")
+
+as.data.frame(all_r2beta)%>%filter(response=="richness")
+
+all_r2beta%>%as.data.frame()%>%filter(response=="richness")
+
+
+m_perf%>%dplyr::select(`Response variable`, R2_conditional, R2_marginal)
+knitr::include_graphics("3_output/tables/models_stats_2023-04-21.png")
+knitr::include_graphics("3_output/figures/time_nbrDist_dot_div_2023-04-21.png")
+knitr::include_graphics("3_output/figures/time_nbrDist_dot_fdiv_2023-04-21.png")
+```
+
+
+
+
+
 
